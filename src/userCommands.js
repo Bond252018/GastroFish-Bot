@@ -45,8 +45,7 @@ async function handleViewTask(chatId, messageId, taskId) {
 
       if (task.photo) {
         await bot.deleteMessage(chatId, messageId).catch((err) => {
-          console.warn('Не удалось удалить старое сообщение:', err.message);
-        });
+      });
 
         await bot.sendPhoto(chatId, task.photo, {
           caption: taskText,
@@ -65,7 +64,6 @@ async function handleViewTask(chatId, messageId, taskId) {
       await bot.sendMessage(chatId, '❌ Задача не найдена.');
     }
   } catch (error) {
-    console.error("Ошибка при обработке callback запроса:", error);
     await bot.sendMessage(chatId, '❌ Произошла ошибка при обработке запроса.');
   }
 }
@@ -75,14 +73,12 @@ async function handleCompleteTask(chatId, taskId, callbackQuery) {
   try {
     const task = await Task.findById(taskId);
     if (!task) {
-      console.log(`Задача с ID ${taskId} не найдена`);
       return bot.sendMessage(chatId, 'Задача не найдена.');
     }
 
     const username = callbackQuery.from.username || 'Неизвестно';
 
     if (!username || username === 'Неизвестно') {
-      console.warn('Не удалось получить username, используется значение по умолчанию.');
     }
 
     // Убедимся, что задача не была завершена этим пользователем ранее
@@ -105,15 +101,12 @@ async function handleCompleteTask(chatId, taskId, callbackQuery) {
 
     await task.save();
 
-    console.log(`Задача "${task.title}" завершена пользователем ${username}`);
-
     // Уведомляем администратора о завершении задачи
     await notifyCreatorOnTaskCompletion(task);
 
     // Удаляем сообщение с задачей
     if (task.messageId) {
-      await bot.deleteMessage(chatId, task.messageId).catch((err) => {
-        console.warn('❌ Не удалось удалить сообщение с задачей:', err.message);
+        await bot.deleteMessage(chatId, task.messageId).catch((err) => {
       });
     }
 
@@ -126,7 +119,6 @@ async function handleCompleteTask(chatId, taskId, callbackQuery) {
       }
     }
   } catch (error) {
-    console.error('Ошибка при завершении задачи:', error);
     await bot.sendMessage(chatId, '❌ Произошла ошибка при завершении задачи.');
   }
 } 
@@ -205,12 +197,10 @@ bot.on('message', async (msg) => {
 
     if (task.messageId) {
       await bot.deleteMessage(chatId, task.messageId).catch(err => {
-        console.warn('❌ Не удалось удалить сообщение с задачей:', err.message);
-      });
-    }
+    });
+  }
 
   } catch (error) {
-    console.error('Ошибка при завершении задачи с фото:', error);
     await bot.sendMessage(chatId, '❌ Произошла ошибка при завершении задачи.');
   }
 });
@@ -282,7 +272,6 @@ if (callbackData.startsWith('skip_task_')) {
 }
 
 } catch (error) {
-console.error('Ошибка при обработке callback запроса:', error);
 await bot.sendMessage(chatId, '❌ Произошла ошибка при обработке запроса.');
 }
 });
@@ -299,8 +288,6 @@ async function handleUserCommands(msg, text, username) {
         return bot.sendMessage(chatId, 'Ваши данные не найдены в системе.');
       }
 
-      console.log(`Пользователь ${username} найден, ищем его задачи...`);
-
       // Получаем задачи пользователя, включая просроченные
       const userTasks = await Task.find({
         assignedTo: username,
@@ -314,7 +301,6 @@ async function handleUserCommands(msg, text, username) {
         await bot.sendMessage(chatId, 'У вас нет незавершённых задач.');
       }
     } catch (error) {
-      console.error("Ошибка при получении задач:", error);
       await bot.sendMessage(chatId, 'Произошла ошибка при обработке вашего запроса.');
     }
   }
@@ -326,8 +312,6 @@ async function handleUserCommands(msg, text, username) {
       if (!user) {
         return bot.sendMessage(chatId, '❌ Не удалось найти информацию о вашем пользователе.');
       }
-
-      console.log(`Пользователь ${username} запрашивает невыполненные задачи...`);
 
       // Получаем время для фильтрации задач за последние 24 часа
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -350,7 +334,6 @@ async function handleUserCommands(msg, text, username) {
       });
       await bot.sendMessage(chatId, taskList, { parse_mode: 'Markdown' });
     } catch (error) {
-      console.error("Ошибка при получении задач:", error);
       await bot.sendMessage(chatId, 'Произошла ошибка при обработке вашего запроса.');
     }
   }
@@ -362,8 +345,6 @@ async function handleUserCommands(msg, text, username) {
       if (!user) {
         return bot.sendMessage(chatId, 'Ваши данные не найдены в системе.');
       }
-
-      console.log(`Пользователь ${username} запрашивает задачи отдела (${user.department})`);
 
       // Получаем задачи отдела, исключая те, которые назначены текущему пользователю
       const departmentTasks = await Task.find({
@@ -383,7 +364,6 @@ async function handleUserCommands(msg, text, username) {
         await bot.sendMessage(chatId, 'В вашем отделе нет незавершённых задач.');
       }
     } catch (error) {
-      console.error("Ошибка при получении задач отдела:", error);
       await bot.sendMessage(chatId, 'Произошла ошибка при обработке запроса.');
     }
   }
@@ -427,7 +407,6 @@ async function handleUserCommands(msg, text, username) {
       });
       await bot.sendMessage(chatId, taskList, { parse_mode: 'Markdown' });
     } catch (error) {
-      console.error("Ошибка при получении невыполненных задач отдела:", error);
       await bot.sendMessage(chatId, 'Произошла ошибка при обработке запроса.');
     }
   }
@@ -457,7 +436,6 @@ async function handleExecuteTask(chatId, taskId, callbackQuery) {
       reply_markup: { inline_keyboard: inlineKeyboard }
     });
   } catch (error) {
-    console.error('Ошибка при обработке выполнения задачи:', error);
     await bot.sendMessage(chatId, '❌ Произошла ошибка.');
   }
 }

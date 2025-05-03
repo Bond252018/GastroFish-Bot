@@ -14,26 +14,18 @@ function sendKeyboard(bot, chatId, message, keyboard) {
 
 // Логика для шага "awaitingTaskDescription"
 async function awaitingTaskDescription(bot, chatId, adminState, username, text) {
-    // Логируем переданные данные для диагностики
-    console.log('adminState:', adminState);
-    console.log('username:', username);
-    console.log('Полученное сообщение:', text);
     
     // Проверяем, если username не был передан или пуст, выводим ошибку
     if (!username) {
-      console.error('Ошибка: username не передан или пуст.');
       if (bot && typeof bot.sendMessage === 'function') {
-        console.log('Объект bot корректен, отправляем сообщение...');
         return bot.sendMessage(chatId, 'Ошибка: не удалось получить ваш username.');
       } else {
-        console.error('Ошибка: объект bot не инициализирован или не поддерживает метод sendMessage.');
         return;  // Выход из функции, если bot не поддерживает sendMessage
       }
     }
   
     // Проверяем, существует ли adminState[username], и инициализируем его, если нужно
     if (!adminState[username]) {
-      console.log(`Инициализация нового состояния для пользователя: ${username}`);
       adminState[username] = {
         description: '',
         step: '',
@@ -175,7 +167,6 @@ await bot.sendMessage(chatId, `✅ Задача добавлена!
       } else {
         role = 'subadmin';
       }
-      console.log(`Роль не была сохранена. Автоматически определили: ${role}`);
     }
 
   // Возвращаем в соответствующее главное меню в зависимости от роли
@@ -237,7 +228,6 @@ await bot.sendMessage(chatId, `✅ Задача добавлена!
       } else {
         role = 'subadmin';
       }
-      console.log(`Роль не была сохранена. Автоматически определили: ${role}`);
     }
 
   // Возвращаем в соответствующее главное меню в зависимости от роли

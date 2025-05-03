@@ -14,12 +14,6 @@ const {
 async function handleAdminCommands(msg, text, username, adminIds) {
   const chatId = msg.chat.id;
 
-  if (adminIds.includes(msg.from.id)) {
-    if (text === '🏠 Главное меню') {
-      delete adminState[username];
-      return bot.sendMessage(chatId, 'Действие отменено. Возвращаемся в главное меню.', adminMainMenu);
-    }
-
     if (text === '👥 Список пользователей') {
       try {
         const users = await User.find({});
@@ -28,7 +22,6 @@ async function handleAdminCommands(msg, text, username, adminIds) {
         const userList = users.map(user => `@${user.username} — ${user.department}`).join('\n');
         return bot.sendMessage(chatId, `Список пользователей:\n\n${userList}`, adminMainMenu);
       } catch (error) {
-        console.error('Ошибка при получении списка пользователей:', error);
         return bot.sendMessage(chatId, 'Произошла ошибка при получении списка пользователей. Попробуйте снова.');
       }
     }
@@ -49,11 +42,9 @@ async function handleAdminCommands(msg, text, username, adminIds) {
           step: 'awaitingDepartment', // Шаг для администратора
           role: 'admin' // Устанавливаем роль как 'admin' при создании новой записи
         };
-        console.log(`Создана запись adminState для ${username} с ролью admin`);
       } else {
         // Если запись уже существует, не перезаписываем роль, только добавляем текущий шаг
         adminState[username].step = 'awaitingDepartment';
-        console.log(`Запись для ${username} обновлена, роль уже установлена как ${adminState[username].role}`);
       }
       
       return bot.sendMessage(chatId, 'Выберите отдел:', {
@@ -112,7 +103,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
       const isExpired = deadlinePassed && (now - deadline > 24 * 60 * 60 * 1000);
 
       if (isExpired) {
-        console.log(`Задача "${task.title}" просрочена и будет помечена как "expired".`);
         task.status = 'expired';
         await task.save();
         continue;
@@ -190,7 +180,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
 
   } catch (error) {
-    console.error('❌ Ошибка при получении невыполненных задач:', error);
     return bot.sendMessage(chatId, 'Произошла ошибка при получении задач. Попробуйте позже.');
   }
 }
@@ -236,7 +225,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     // Отправляем сообщение, что задачи были удалены и возвращаем в главное меню
     return bot.sendMessage(chatId, `Все просроченные задачи из отдела "${selectedDepartment.name}" были удалены.`, adminMainMenu);
   } catch (error) {
-    console.error('❌ Ошибка при удалении просроченных задач:', error);
     return bot.sendMessage(chatId, 'Произошла ошибка при удалении просроченных задач. Попробуйте позже.');
   }
 }
@@ -271,7 +259,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     // Отправляем сообщение, что задачи были удалены и возвращаем в главное меню
     return bot.sendMessage(chatId, `Все просроченные задачи из отдела "${selectedDepartment.name}" были удалены.`, adminMainMenu);
   } catch (error) {
-    console.error('❌ Ошибка при удалении просроченных задач:', error);
     return bot.sendMessage(chatId, 'Произошла ошибка при удалении просроченных задач. Попробуйте позже.');
   }
 }
@@ -299,7 +286,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
               reply_markup: { keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🏠 Главное меню']], resize_keyboard: true }
             });
           } catch (error) {
-            console.error('Ошибка при добавлении пользователя:', error);
             return bot.sendMessage(chatId, `Произошла ошибка: ${error.message}`);
           }
           case 'awaitingSubadminUsername':
@@ -384,10 +370,8 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
             bot.sendMessage(chatId, `Пользователь @${delUsername} был успешно удалён.`);
             return bot.sendMessage(chatId, 'Возвращаемся в главное меню.', adminMainMenu);
           } catch (error) {
-            console.error('Ошибка при удалении пользователя:', error);
             return bot.sendMessage(chatId, 'Произошла ошибка при удалении пользователя. Попробуйте снова.');
           }
-
 
         case 'awaitingDepartment':
           const selected = departmentList.find(d => `${d.emoji} ${d.name}` === text);
@@ -466,7 +450,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
       }
     }
   }
-}
   
 bot.on('photo', async (msg) => {
   const chatId = msg.chat.id;
@@ -501,7 +484,6 @@ bot.on('photo', async (msg) => {
     });
 
   } catch (error) {
-    console.error('❌ Ошибка при сохранении фото задачи:', error);
     return bot.sendMessage(chatId, 'Произошла ошибка при обработке фото. Попробуйте снова.');
   }
 });
@@ -513,15 +495,19 @@ bot.on('message', async (msg) => {
   const text = msg.text?.trim();
   const state = adminState[username];
 
-  console.log("Получен текст от пользователя:", text);
+  if (adminIds.includes(msg.from.id)) {
+    if (text === '🏠 Главное меню') {
+      delete adminState[username];
+      return bot.sendMessage(chatId, 'Действие отменено. Возвращаемся в главное меню.', adminMainMenu);
+    }
+  }
 
   // --- Только админ может начать "📂 Документы"
   if (text === '📂 Документы') {
     if (!adminIds.includes(userId)) {
-      console.log(`❌ Пользователь @${username} (${userId}) попытался получить доступ к документам без прав.`);
       return bot.sendMessage(chatId, '⛔ У вас нет прав для доступа к этому разделу.');
     }
-
+    
     if (adminState[username]?.step === 'awaitingDepartmentForDocuments') {
       return bot.sendMessage(chatId, 'Вы уже выбираете подразделение для отправки документа.');
     }
@@ -543,27 +529,23 @@ bot.on('message', async (msg) => {
     if (!adminIds.includes(userId)) {
       return bot.sendMessage(chatId, '⛔ Только администратор может выбрать подразделение.');
     }
-
-    if (text === '🏠 Главное меню') {
-      delete adminState[username];
-      return bot.sendMessage(chatId, 'Вы вернулись в главное меню.');
-    }
-
+  
     const selectedDepartment = departmentList.find(d => `${d.emoji} ${d.name}` === text);
-    if (selectedDepartment) {
-      // Обновляем состояние и сохраняем выбранное подразделение
-      adminState[username] = { 
-        ...state, 
-        step: 'awaitingDocumentUpload',  // Переходим к этапу ожидания документа
-        department: selectedDepartment.name
-      };
-      console.log(`Выбрано подразделение: ${selectedDepartment.name}`);
-      return bot.sendMessage(chatId, `Вы выбрали подразделение: ${selectedDepartment.name}. Пожалуйста, загрузите PDF-документ.`);
-    } else {
-      return bot.sendMessage(chatId, 'Пожалуйста, выберите подразделение из списка.');
+  
+    // ✅ Проверка на корректность выбора
+    if (!selectedDepartment) {
+      return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
     }
+  
+    // Обновляем состояние
+    adminState[username] = { 
+      ...state, 
+      step: 'awaitingDocumentUpload',
+      department: selectedDepartment.name
+    };
+    return bot.sendMessage(chatId, `Вы выбрали подразделение: ${selectedDepartment.name}. Пожалуйста, загрузите PDF-документ.`);
   }
-
+  
   // --- Ожидание документа
   if (state?.step === 'awaitingDocumentUpload') {
     // Проверка на текст: если это текстовое сообщение, не обрабатываем его
@@ -594,7 +576,6 @@ bot.on('message', async (msg) => {
         });
 
         await newDocument.save();
-        console.log('✅ Документ сохранён в базе данных.');
 
         const usersInDepartment = await User.find({ department });
         if (usersInDepartment.length === 0) {
@@ -603,14 +584,12 @@ bot.on('message', async (msg) => {
           // Отправка документа всем пользователям подразделения
           for (const user of usersInDepartment) {
             if (!user.chatId) {
-              console.error(`❌ У пользователя ${user.username} отсутствует chatId.`);
               continue; // Пропускаем этого пользователя, если у него нет chatId
             }
 
             try {
               await bot.sendDocument(user.chatId, fileUrl, { caption: '📎 Новый документ для вашего отдела.' });
             } catch (error) {
-              console.error(`❌ Ошибка при отправке документа пользователю ${user.chatId}:`, error.message);
             }
           }
 
@@ -618,8 +597,6 @@ bot.on('message', async (msg) => {
         delete adminState[username]; // Состояние очищается, чтобы не было повторного запроса на выбор подразделения
 
       } catch (error) {
-        // Логируем ошибку, но не показываем сообщение пользователю
-        console.error('❌ Ошибка при сохранении документа или отправке:', error);
       }
     } else {
       return bot.sendMessage(chatId, '❌ Ожидается только PDF-документ. Пожалуйста, загрузите PDF.');
@@ -658,7 +635,6 @@ if (text === '📄 Мои документы') {
     });
 
   } catch (error) {
-    console.error('❌ Ошибка при получении документов для пользователя:', error);
     return bot.sendMessage(chatId, 'Произошла ошибка при получении документов. Попробуйте позже.');
   }
 }
@@ -675,11 +651,8 @@ bot.on('document', async (msg) => {
 
   // Проверка прав администратора
   if (!adminIds.includes(userId)) {
-    console.log(`❌ Пользователь @${username} (${userId}) попытался загрузить документ без прав.`);
     return bot.sendMessage(chatId, '⛔ У вас нет прав загружать документы.');
   }
-
-  console.log(`Загружен документ от ${username}`);
 
   if (adminState[username]?.department) {
     const fileId = msg.document.file_id;
@@ -699,7 +672,6 @@ bot.on('document', async (msg) => {
         });
 
         await newDocument.save();
-        console.log('✅ Документ сохранён в базе данных.');
 
         const usersInDepartment = await User.find({ department });
         if (usersInDepartment.length === 0) {
@@ -709,23 +681,20 @@ bot.on('document', async (msg) => {
         // Отправка документа всем пользователям подразделения
         for (const user of usersInDepartment) {
           if (!user.chatId) {
-            console.error(`❌ У пользователя ${user.username} отсутствует chatId. Пропускаем.`);
             continue; // Пропускаем пользователя без chatId
           }
 
           try {
             await bot.sendDocument(user.chatId, fileUrl, { caption: '📎 Новый документ для вашего отдела.' });
           } catch (error) {
-            console.error(`❌ Ошибка при отправке документа пользователю ${user.username} (chatId: ${user.chatId}):`, error.message);
-          }
         }
+      }
 
         // Очищаем состояние после завершения отправки
         delete adminState[username]; // Состояние очищается, чтобы не было повторного запроса на выбор подразделения
         return bot.sendMessage(chatId, `✅ Документ успешно отправлен всем пользователям отдела ${department}.`, adminMainMenu); // Переход в главное меню
 
       } catch (error) {
-        console.error('❌ Ошибка при сохранении документа или отправке:', error);
       }
     } else {
       return bot.sendMessage(chatId, 'Пожалуйста, загрузите документ в формате PDF.');

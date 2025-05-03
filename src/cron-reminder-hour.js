@@ -3,8 +3,6 @@ const {bot, formatDateTimeRu, Task, User } = require('./utils'); // Убедит
 const { adminIds } = require('../constants/constants');
 
 
-console.log('⏰ Планировщик задач запущен...');
-
 cron.schedule('*/5 * * * *', async () => {
   const now = new Date();
   const hourLater = new Date(now.getTime() + 60 * 60 * 1000);
@@ -16,7 +14,6 @@ cron.schedule('*/5 * * * *', async () => {
       const deadline = new Date(task.deadline);
 
       if (isNaN(deadline.getTime())) {
-        console.warn(`⚠️ Неверная дата дедлайна у задачи "${task.title}": ${task.deadline}`);
         continue;
       }
 
@@ -33,24 +30,20 @@ cron.schedule('*/5 * * * *', async () => {
           if (user?.telegramId && user.role !== 'subadmin') { // Проверка на роль субадмина
             try {
               await bot.sendMessage(user.telegramId, reminderText, { parse_mode: 'Markdown' });
-              console.log(`📩 Напоминание отправлено @${user.username}`);
             } catch (err) {
-              console.error(`❌ Ошибка при отправке @${user.username}:`, err.message);
-            }
           }
-        } else {
+        }
+      } else {
           // Назначено всем сотрудникам отдела
           const users = await User.find({ department: task.department, role: 'user' });
           for (let user of users) {
             if (!user.telegramId || user.role === 'subadmin') continue; // Пропускаем субадминов
             try {
               await bot.sendMessage(user.telegramId, reminderText, { parse_mode: 'Markdown' });
-              console.log(`📩 Напоминание отправлено @${user.username}`);
             } catch (err) {
-              console.error(`❌ Ошибка при отправке @${user.username}:`, err.message);
-            }
           }
         }
+      }
 
         task.notified = true;
         await task.save();
@@ -86,7 +79,6 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
     task.status = 'overdue';
     task.category = 'невыполненные';
     await task.save();
-    console.log(`⚠️ Задача "${task.title}" просрочена — не выполнена сотрудниками: ${notCompletedUsers.map(u => u.username).join(', ')}`);
   } else if (task.assignedTo) {
     // Задача назначена одному сотруднику
     const user = await User.findOne({ username: task.assignedTo });
@@ -107,16 +99,13 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
     task.status = 'overdue';
     task.category = 'невыполненные';
     await task.save();
-    console.log(`⚠️ Задача "${task.title}" была просрочена и перемещена в категорию "невыполненные".`);
   }
 }
       // Удаление задачи через 30 дней после дедлайна
       if (deadline < now && now - deadline >= 30 * 24 * 60 * 60 * 1000) {
         await Task.deleteOne({ _id: task._id });
-        console.log(`🗑️ Задача "${task.title}" была удалена, так как прошло 30 дней с дедлайна.`);
       }      
     }
   } catch (err) {
-    console.error('❌ Ошибка планировщика задач:', err);
-  }
+   }
 });
