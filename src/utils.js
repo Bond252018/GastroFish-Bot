@@ -11,18 +11,16 @@ const token = process.env.BOT_TOKEN;
 const mongoURI = process.env.MONGO_URI;
  
 if (!token || !mongoURI) {
-  console.error('Ошибка: не установлены переменные окружения BOT_TOKEN или MONGO_URI');
   process.exit(1);
 }
 
 const bot = new TelegramBot(token, { polling: true });
 
 mongoose.connect(mongoURI)
-  .then(() => console.log('✅ Успешное подключение к MongoDB!'))
-  .catch(err => {
-    console.error('Ошибка подключения к MongoDB:', err);
-    process.exit(1);
-  });
+.catch(err => {
+  console.log('❌ Error happened while establishing the MongoDB connection', err)
+      process.exit(1);
+    });
   
 // Функция для проверки формата username
 function isValidUsername(username) {
@@ -104,7 +102,6 @@ const userMenu = {
   reply_markup: {
     keyboard: [
       ['📋 Мои задачи', '📋 Мои невыполненные задачи'],
-      ['📂 Задачи отдела', '📂 Невыполненные задачи отдела'],
       [' 📄 Мои документы'],
     ],
     resize_keyboard: true,

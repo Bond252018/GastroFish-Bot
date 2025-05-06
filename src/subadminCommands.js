@@ -10,7 +10,7 @@ const {
   awaitingDeadlineTime,
   awaitingManualTimeInput
 } = require('./deadlineHandler');
-const { notifySubadminOnTaskCompletion } = require('./notifications'); // Подключаем уведомление
+const { notifySubadminOnTaskCompletion } = require('./notifications'); 
 
 
 async function handleSubadminCommands(msg, text, username) {
@@ -31,8 +31,6 @@ async function handleSubadminCommands(msg, text, username) {
       // Получим всех пользователей с ролью 'user' в отделе
       const users = await User.find({ department, role: 'user' });
 
-      console.log(`Найдено пользователей в отделе "${department}":`, users);
-
       if (!users.length) {
         return bot.sendMessage(chatId, `В отделе "${department}" нет сотрудников.`, subadminMenu);
       }
@@ -41,7 +39,6 @@ async function handleSubadminCommands(msg, text, username) {
       return bot.sendMessage(chatId, `👥 Сотрудники отдела "${department}":\n\n${list}`, subadminMenu);
 
     } catch (err) {
-      console.error('❌ Ошибка при получении сотрудников:', err);
       return bot.sendMessage(chatId, 'Произошла ошибка при получении списка сотрудников. Попробуйте позже.', subadminMenu);
     }
   }
@@ -129,11 +126,11 @@ async function handleSubadminCommands(msg, text, username) {
     }
   }
 }
+
 // Завершение задачи
 async function completeTask(taskId) {
-  console.log('👉 Завершение задачи:', taskId);
   const task = await Task.findById(taskId);
-  if (!task) return console.log('❌ Задача не найдена при завершении.');
+  if (!task) return;
 
   task.status = 'completed';
   await task.save();

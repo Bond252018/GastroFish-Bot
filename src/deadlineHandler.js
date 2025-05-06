@@ -1,9 +1,17 @@
 require('dotenv').config();
 
-const { subadminMenu, adminMainMenu } = require('./utils');
+const { subadminMenu, adminMainMenu, User } = require('./utils');
 const Task = require('../models/taskDB');
 const { adminIds } = require('../constants/constants');
 
+function convertUkraineLocalToUTC(year, month, day, hours, minutes) {
+  const localDate = new Date(Date.UTC(year, month, day, hours, minutes));
+  const uaTimeZone = 'Europe/Kyiv';
+  const tzOffsetMinutes = -new Date(localDate.toLocaleString('en-US', { timeZone: uaTimeZone })).getTimezoneOffset();
+  const utcDate = new Date(Date.UTC(year, month, day, hours, minutes));
+  utcDate.setMinutes(utcDate.getMinutes() - tzOffsetMinutes);
+  return utcDate;
+}
 
 // Функция для отправки сообщения с клавиатурой
 function sendKeyboard(bot, chatId, message, keyboard) {
@@ -14,26 +22,18 @@ function sendKeyboard(bot, chatId, message, keyboard) {
 
 // Логика для шага "awaitingTaskDescription"
 async function awaitingTaskDescription(bot, chatId, adminState, username, text) {
-    // Логируем переданные данные для диагностики
-    console.log('adminState:', adminState);
-    console.log('username:', username);
-    console.log('Полученное сообщение:', text);
     
     // Проверяем, если username не был передан или пуст, выводим ошибку
     if (!username) {
-      console.error('Ошибка: username не передан или пуст.');
       if (bot && typeof bot.sendMessage === 'function') {
-        console.log('Объект bot корректен, отправляем сообщение...');
         return bot.sendMessage(chatId, 'Ошибка: не удалось получить ваш username.');
       } else {
-        console.error('Ошибка: объект bot не инициализирован или не поддерживает метод sendMessage.');
         return;  // Выход из функции, если bot не поддерживает sendMessage
       }
     }
   
     // Проверяем, существует ли adminState[username], и инициализируем его, если нужно
     if (!adminState[username]) {
-      console.log(`Инициализация нового состояния для пользователя: ${username}`);
       adminState[username] = {
         description: '',
         step: '',
@@ -133,36 +133,63 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
     const timePart = text;
     const [day, month, year] = datePart.split('.');
     const [hours, minutes] = timePart.split(':');
-    const deadline = new Date(year, month - 1, day, hours, minutes);
+    const deadline = convertUkraineLocalToUTC(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
   
     if (isNaN(deadline.getTime())) {
       return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
     }
-  
+
     adminState[username].deadline = deadline;
-  
-    // Сохранение задачи
-    const task = new Task({
-      title: adminState[username].title,
-      description: adminState[username].description,
-      department: adminState[username].department,
-      username,
-      photo: adminState[username].photo || null,
-      assignedTo: adminState[username].target === 'user' ? adminState[username].targetUsername : null,
-      deadline,
-      status: 'pending',
-      notified: false
-    });
-  
-    await task.save();
-    delete adminState[username];
+
+    if (adminState[username].target === 'user') {
+      // Задача для одного конкретного пользователя
+      const task = new Task({
+        title: adminState[username].title,
+        description: adminState[username].description,
+        department: adminState[username].department,
+        username,
+        photo: adminState[username].photo || null,
+        assignedTo: adminState[username].targetUsername,
+        deadline,
+        status: 'pending',
+        notified: false
+      });
     
-await bot.sendMessage(chatId, `✅ Задача добавлена!
-📌 Название: ${task.title}
-📝 Описание: ${task.description}
-📅 Дедлайн: ${deadline.toLocaleString('ru-RU')}
-🏢 Отдел: ${task.department}
-👤 Назначено: ${task.assignedTo ? `@${task.assignedTo}` : 'всем сотрудникам отдела'}`);
+      await task.save();
+    
+      // Отправляем информацию для конкретного пользователя
+      await bot.sendMessage(chatId, `✅ Задача добавлена для @${task.assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
+    } else {
+      // Задача для всех в отделе
+      const departmentUsers = await User.find({ department: adminState[username].department });
+    
+      // Массив для сохранения задач
+      const tasksToSend = [];
+    
+      for (const user of departmentUsers) {
+        const task = new Task({
+          title: adminState[username].title,
+          description: adminState[username].description,
+          department: adminState[username].department,
+          username,
+          photo: adminState[username].photo || null,
+          assignedTo: user.username, // Каждому индивидуально
+          deadline,
+          status: 'pending',
+          notified: false
+        });
+    
+        // Сохраняем задачу
+        await task.save();
+    
+        // Сохраняем информацию о задаче для отправки
+        tasksToSend.push(task);
+      }
+    
+      // После сохранения всех задач отправляем информацию
+      const task = tasksToSend[0]; // Берем первую задачу для отправки данных
+      await bot.sendMessage(chatId, `✅ Задача добавлена для всех сотрудников отдела ${adminState[username].department} (${departmentUsers.length} человек)\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
+    }
     
     
     const userId = msg.from.id;
@@ -175,7 +202,6 @@ await bot.sendMessage(chatId, `✅ Задача добавлена!
       } else {
         role = 'subadmin';
       }
-      console.log(`Роль не была сохранена. Автоматически определили: ${role}`);
     }
 
   // Возвращаем в соответствующее главное меню в зависимости от роли
@@ -195,8 +221,14 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
     const manualTime = text;
     const [d, m, y] = manualDate.split('.');
     const [h, min] = manualTime.split(':');
-    const manualDeadline = new Date(y, m - 1, d, h, min);
-  
+    const manualDeadline = convertUkraineLocalToUTC(
+      Number(y),
+      Number(m) - 1,
+      Number(d),
+      Number(h),
+      Number(min)
+    );
+      
     if (isNaN(manualDeadline.getTime())) {
       return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
     }
@@ -204,29 +236,56 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
     // Сохраняем дату и время
     adminState[username].deadline = manualDeadline;
   
-    // Сохраняем задачу
-    const task = new Task({
-      title: adminState[username].title,
-      description: adminState[username].description,
-      department: adminState[username].department,
-      username,
-      photo: adminState[username].photo || null,
-      assignedTo: adminState[username].target === 'user' ? adminState[username].targetUsername : null,
-      deadline: adminState[username].deadline,
-      status: 'pending',
-      notified: false
-    });
-  
-    await task.save();
-    delete adminState[username];
-  
-await bot.sendMessage(chatId, `✅ Задача добавлена!
-📌 Название: ${task.title}
-📝 Описание: ${task.description}
-📅 Дедлайн: ${manualDeadline.toLocaleString('ru-RU')}
-🏢 Отдел: ${task.department}
-👤 Назначено: ${task.assignedTo ? `@${task.assignedTo}` : 'всем сотрудникам отдела'}`);
-  
+    if (adminState[username].target === 'user') {
+      // Задача для одного конкретного пользователя
+      const task = new Task({
+        title: adminState[username].title,
+        description: adminState[username].description,
+        department: adminState[username].department,
+        username,
+        photo: adminState[username].photo || null,
+        assignedTo: adminState[username].targetUsername,
+        deadline: manualDeadline,
+        status: 'pending',
+        notified: false
+      });
+    
+      await task.save();
+    
+      // Отправляем информацию для конкретного пользователя
+      await bot.sendMessage(chatId, `✅ Задача добавлена для @${task.assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
+    } else {
+      // Задача для всех в отделе
+      const departmentUsers = await User.find({ department: adminState[username].department });
+    
+      // Массив для сохранения задач
+      const tasksToSend = [];
+    
+      for (const user of departmentUsers) {
+        const task = new Task({
+          title: adminState[username].title,
+          description: adminState[username].description,
+          department: adminState[username].department,
+          username,
+          photo: adminState[username].photo || null,
+          assignedTo: user.username, // Каждому индивидуально
+          deadline: manualDeadline,
+          status: 'pending',
+          notified: false
+        });
+    
+        // Сохраняем задачу
+        await task.save();
+    
+        // Сохраняем информацию о задаче для отправки
+        tasksToSend.push(task);
+      }
+    
+      // После сохранения всех задач отправляем информацию
+      const task = tasksToSend[0]; // Берем первую задачу для отправки данных
+      await bot.sendMessage(chatId, `✅ Задача добавлена для всех сотрудников отдела ${adminState[username].department} (${departmentUsers.length} человек)\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
+    }
+    
     const userId = msg.from.id;
     
     let role = adminState[userId]?.role;
@@ -237,7 +296,6 @@ await bot.sendMessage(chatId, `✅ Задача добавлена!
       } else {
         role = 'subadmin';
       }
-      console.log(`Роль не была сохранена. Автоматически определили: ${role}`);
     }
 
   // Возвращаем в соответствующее главное меню в зависимости от роли
