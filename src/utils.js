@@ -16,12 +16,12 @@ if (!token || !mongoURI) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-// Подключаемся к MongoDB с дополнительными настройками таймаута
 mongoose.connect(mongoURI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   socketTimeoutMS: 30000,  // Увеличиваем таймаут сокета до 30 секунд
-  serverSelectionTimeoutMS: 30000  // Увеличиваем таймаут выбора сервера до 30 секунд
+  serverSelectionTimeoutMS: 30000,  // Увеличиваем таймаут выбора сервера до 30 секунд
+  connectTimeoutMS: 30000,  // Увеличиваем таймаут подключения до 30 секунд
 })
 .then(() => {
   console.log('✅ Connected to MongoDB');
@@ -30,6 +30,7 @@ mongoose.connect(mongoURI, {
   console.log('❌ Error happened while establishing the MongoDB connection', err);
   process.exit(1);
 });
+
 
   
 // Функция для проверки формата username
