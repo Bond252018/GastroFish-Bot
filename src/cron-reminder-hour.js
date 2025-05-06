@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const {bot, formatDateTimeRu, Task, User } = require('./utils'); // Убедитесь, что пути к моделям и боту корректны
+const {bot, formatDateTimeRu, Task, User } = require('./utils'); 
 const { adminIds } = require('../constants/constants');
 
 
@@ -81,8 +81,8 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
     await task.save();
   } else if (task.assignedTo) {
     // Задача назначена одному сотруднику
-    const user = await User.findOne({ username: task.assignedTo });
-    const responsible = `@${task.assignedTo}`;
+    const responsible = task.assignedTo ? `@${task.assignedTo}` : 'всем сотрудникам отдела';
+
 
     for (let adminId of adminIds) {
       await bot.sendMessage(

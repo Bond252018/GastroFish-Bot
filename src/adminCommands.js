@@ -91,8 +91,10 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     // Получаем все задачи для выбранного отдела со статусом 'pending' или 'overdue'
     const tasks = await Task.find({
       department: selectedDepartment.name,
-      status: { $in: ['pending', 'overdue'] }
+      status: { $in: ['pending', 'overdue'] },
+      isCompleted: false
     }).sort({ deadline: 1 });
+    
 
     let message = `📋 Невыполненные задачи в отделе "${escapeHTML(selectedDepartment.name)}":\n\n`;
     let hasPendingTasks = false;

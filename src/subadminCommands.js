@@ -10,7 +10,7 @@ const {
   awaitingDeadlineTime,
   awaitingManualTimeInput
 } = require('./deadlineHandler');
-const { notifySubadminOnTaskCompletion } = require('./notifications'); // Подключаем уведомление
+const { notifySubadminOnTaskCompletion } = require('./notifications'); 
 
 
 async function handleSubadminCommands(msg, text, username) {
