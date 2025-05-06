@@ -4,6 +4,14 @@ const { subadminMenu, adminMainMenu, User } = require('./utils');
 const Task = require('../models/taskDB');
 const { adminIds } = require('../constants/constants');
 
+function convertUkraineLocalToUTC(year, month, day, hours, minutes) {
+  const localDate = new Date(Date.UTC(year, month, day, hours, minutes));
+  const uaTimeZone = 'Europe/Kyiv';
+  const tzOffsetMinutes = -new Date(localDate.toLocaleString('en-US', { timeZone: uaTimeZone })).getTimezoneOffset();
+  const utcDate = new Date(Date.UTC(year, month, day, hours, minutes));
+  utcDate.setMinutes(utcDate.getMinutes() - tzOffsetMinutes);
+  return utcDate;
+}
 
 // Функция для отправки сообщения с клавиатурой
 function sendKeyboard(bot, chatId, message, keyboard) {
@@ -125,7 +133,7 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
     const timePart = text;
     const [day, month, year] = datePart.split('.');
     const [hours, minutes] = timePart.split(':');
-    const deadline = new Date(year, month - 1, day, hours, minutes);
+    const deadline = convertUkraineLocalToUTC(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
   
     if (isNaN(deadline.getTime())) {
       return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
@@ -213,8 +221,14 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
     const manualTime = text;
     const [d, m, y] = manualDate.split('.');
     const [h, min] = manualTime.split(':');
-    const manualDeadline = new Date(y, m - 1, d, h, min);
-  
+    const manualDeadline = convertUkraineLocalToUTC(
+      Number(y),
+      Number(m) - 1,
+      Number(d),
+      Number(h),
+      Number(min)
+    );
+      
     if (isNaN(manualDeadline.getTime())) {
       return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
     }
