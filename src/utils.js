@@ -16,11 +16,18 @@ if (!token || !mongoURI) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-mongoose.connect(mongoURI)
+mongoose.connect(mongoURI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => {
+  console.log('✅ Connected to MongoDB');
+})
 .catch(err => {
-  console.log('❌ Error happened while establishing the MongoDB connection', err)
-      process.exit(1);
-    });
+  console.log('❌ Error happened while establishing the MongoDB connection', err);
+  process.exit(1);
+});
+
   
 // Функция для проверки формата username
 function isValidUsername(username) {
