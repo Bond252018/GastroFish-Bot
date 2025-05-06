@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const {bot, formatDateTimeRu, Task, User } = require('./utils'); 
 const { adminIds } = require('../constants/constants');
 
+console.log('⏰ Планировщик задач запущен...');
 
 cron.schedule('*/5 * * * *', async () => {
   const now = new Date();
