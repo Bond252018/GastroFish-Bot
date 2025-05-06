@@ -248,14 +248,16 @@ if (callbackData.startsWith('skip_task_')) {
 }
 
  // Обработка кнопки "Назад"
- if (callbackData === 'back_to_tasks') {
+if (callbackData === 'back_to_tasks') {
   const user = await User.findOne({ username: username });
 
   if (user) {
-    // Получаем только незавершённые задачи, назначенные этому пользователю
-    const userTasks = await Task.find({ 
+    // Получаем только актуальные задачи, назначенные этому пользователю
+    const userTasks = await Task.find({
       assignedTo: username, // Задачи только для этого пользователя
-      isCompleted: false 
+      isCompleted: false,    // Только незавершённые задачи
+      status: { $ne: 'overdue' },  // Задачи, которые не просрочены
+      deadline: { $gt: new Date() } // Дедлайн ещё не прошёл
     });
 
     if (userTasks.length > 0) {
@@ -270,7 +272,6 @@ if (callbackData.startsWith('skip_task_')) {
     await bot.sendMessage(chatId, 'Ваши данные не найдены в системе.');
   }
 }
-
 } catch (error) {
 await bot.sendMessage(chatId, '❌ Произошла ошибка при обработке запроса.');
 }
