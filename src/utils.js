@@ -77,7 +77,8 @@ const departmentList = [
   { name: "ФК", emoji: "🍣" },
   { name: "Суши бар", emoji: "🍣" },
   { name: "Витрина", emoji: "🏪" },
-  { name: "Бар", emoji: "🍹" }
+  { name: "Бар", emoji: "🍹" },
+  { name: "7-й Склад", emoji: "🏢" }
 ];
   
 const adminState = {};
