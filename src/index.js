@@ -20,54 +20,70 @@ bot.onText(/\/start/, async (msg) => {
 
   let user = await User.findOne({ username });
 
-  if (!user) {
-    user = new User({
-      username,
-      telegramId,
-      chatId,
-      department: 'не назначено',
-    });
-
-    try {
-      await user.save();
-    } catch (error) {
-      bot.sendMessage(chatId, "Произошла ошибка при сохранении пользователя.");
-      return;
-    }
-  } else {
-    let updated = false;
-
-    if (user.telegramId !== telegramId) {
-      user.telegramId = telegramId;
-      updated = true;
-    }
-
-    if (!user.chatId || user.chatId !== chatId) {
-      user.chatId = chatId;
-      updated = true;
-    }
-
-    if (updated) {
-      try {
-        await user.save();
-      } catch (error) {
-      }
-    }
-  }
-
+  // ✅ Админ может заходить без предварительной регистрации
   if (adminIds.includes(telegramId)) {
-    user.role = 'admin';
+    if (!user) {
+      user = new User({
+        username,
+        telegramId,
+        chatId,
+        department: 'не назначено',
+        role: 'admin',
+      });
+    } else {
+      user.role = 'admin';
+      user.telegramId = telegramId;
+      user.chatId = chatId;
+    }
+
     await user.save();
     bot.sendMessage(chatId, "Добро пожаловать, администратор!", adminMainMenu);
-  } else if (user.role === 'subadmin') {
-    bot.sendMessage(chatId, `Добро пожаловать, субадмин отдела "${user.department}"!`, subadminMenu);
-  } else {
-    bot.sendMessage(chatId, `Добро пожаловать! Ваш отдел: ${user.department}`, userMenu);
+    return;
   }
+
+  // ❌ Остальные должны быть добавлены вручную
+  if (!user) {
+    bot.sendMessage(chatId, "Вы не зарегистрированы в системе. Обратитесь к администратору для доступа.");
+    return;
+  }
+
+  // Обновление chatId / telegramId при необходимости
+  let updated = false;
+
+  if (user.telegramId !== telegramId) {
+    user.telegramId = telegramId;
+    updated = true;
+  }
+
+  if (!user.chatId || user.chatId !== chatId) {
+    user.chatId = chatId;
+    updated = true;
+  }
+
+  if (updated) {
+    await user.save();
+  }
+
+ // 👥 Меню по роли
+if (user.role === 'subadmin') {
+  // Проверяем, есть ли у субадмина выбранные отделы
+  if (user.subadminDepartments && user.subadminDepartments.length > 0) {
+    // Создаем строку с отделами, разделёнными запятой
+    const departmentsList = user.subadminDepartments.join(', ');
+
+    // Отправляем сообщение с подставленными отделами
+    bot.sendMessage(chatId, `Добро пожаловать, субадмин отдела(ов): "${departmentsList}"!`, subadminMenu);
+  } else {
+    // Если у субадмина нет выбранных отделов
+    bot.sendMessage(chatId, 'У вас нет выбранных отделов.', subadminMenu);
+  }
+} else {
+  // Для других ролей (например, для пользователей)
+  bot.sendMessage(chatId, `Добро пожаловать! Ваш отдел: ${user.department}`, userMenu);
+}
 
   await handleUserCommands(msg, '', username);
 });
-
 
 
 bot.on('message', async (msg) => {

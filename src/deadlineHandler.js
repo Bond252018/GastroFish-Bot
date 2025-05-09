@@ -146,7 +146,7 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
       const task = new Task({
         title: adminState[username].title,
         description: adminState[username].description,
-        department: adminState[username].department,
+        department: adminState[username].selectedDepartment || adminState[username].department,
         username,
         photo: adminState[username].photo || null,
         assignedTo: adminState[username].targetUsername,
@@ -161,36 +161,63 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
       await bot.sendMessage(chatId, `✅ Задача добавлена для @${task.assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
     } else {
       // Задача для всех в отделе
-      const departmentUsers = await User.find({ department: adminState[username].department });
-    
-      // Массив для сохранения задач
-      const tasksToSend = [];
-    
-      for (const user of departmentUsers) {
-        const task = new Task({
-          title: adminState[username].title,
-          description: adminState[username].description,
-          department: adminState[username].department,
-          username,
-          photo: adminState[username].photo || null,
-          assignedTo: user.username, // Каждому индивидуально
-          deadline,
-          status: 'pending',
-          notified: false
-        });
-    
-        // Сохраняем задачу
-        await task.save();
-    
-        // Сохраняем информацию о задаче для отправки
-        tasksToSend.push(task);
+        // Для администратора или субадмина
+        let departmentToUse;
+
+        if (adminState[username].subadminDepartments && adminState[username].subadminDepartments.length > 0) {
+          // Если это субадмин, берем департамент из selectedDepartment, если он есть
+          departmentToUse = adminState[username].selectedDepartment || adminState[username].subadminDepartments[0]; // Берем первый департамент из списка
+        } else {
+          // Если это админ, берем департамент из selectedDepartment или department
+          departmentToUse = adminState[username].selectedDepartment || adminState[username].department;
+        }
+
+        // Запрос пользователей на основе выбранного департамента
+        let departmentUsers = await User.find({ department: departmentToUse });
+        departmentUsers = departmentUsers.filter(user => user.role !== 'subadmin');
+        
+        // Массив для сохранения задач
+        const tasksToSend = [];
+        const assignedUsers = []; // Массив для хранения ников пользователей, которым назначены задачи
+
+        // Перебираем пользователей и исключаем субадминов
+        for (const user of departmentUsers) {
+          // Проверка, является ли пользователь субадмином (предполагаем, что у вас есть флаг или роль)
+          if (user.isSubAdmin) {
+            continue; // Пропускаем создание задачи для этого пользователя
+          }
+
+          // Создаем задачу для остальных пользователей
+          const task = new Task({
+            title: adminState[username].title, // Название задачи
+            description: adminState[username].description, // Описание задачи
+            department: departmentToUse, // Выбранный департамент
+            username, // Название пользователя
+            photo: adminState[username].photo || null, // Фото (если есть)
+            assignedTo: user.username, // Пользователь, которому назначается задача
+            deadline, // Дедлайн задачи
+            status: 'pending', // Статус задачи
+            notified: false // Не уведомлено
+          });
+
+          // Сохраняем задачу
+          await task.save();
+
+          // Добавляем задачу в массив для дальнейшей отправки
+          tasksToSend.push(task);
+          
+          // Добавляем ник пользователя в массив assignedUsers
+          assignedUsers.push(user.username);
+        }
+
+        // После сохранения всех задач отправляем информацию
+        if (departmentUsers.length > 0) {
+          const task = tasksToSend[0]; // Берем первую задачу для отправки данных
+          await bot.sendMessage(chatId, `✅ Задача добавлена для сотрудников отдела ${departmentToUse} (${tasksToSend.length} человек)\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}\n\n📝 Задача назначена пользователям: ${assignedUsers.join(', ')}`);
+        } else {
+          await bot.sendMessage(chatId, `В выбранном департаменте (${departmentToUse}) нет сотрудников для назначения задачи.`);
+        }
       }
-    
-      // После сохранения всех задач отправляем информацию
-      const task = tasksToSend[0]; // Берем первую задачу для отправки данных
-      await bot.sendMessage(chatId, `✅ Задача добавлена для всех сотрудников отдела ${adminState[username].department} (${departmentUsers.length} человек)\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
-    }
-    
     
     const userId = msg.from.id;
     
@@ -241,7 +268,7 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
       const task = new Task({
         title: adminState[username].title,
         description: adminState[username].description,
-        department: adminState[username].department,
+        department: adminState[username].selectedDepartment || adminState[username].department,
         username,
         photo: adminState[username].photo || null,
         assignedTo: adminState[username].targetUsername,
@@ -256,35 +283,59 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
       await bot.sendMessage(chatId, `✅ Задача добавлена для @${task.assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
     } else {
       // Задача для всех в отделе
-      const departmentUsers = await User.find({ department: adminState[username].department });
-    
-      // Массив для сохранения задач
-      const tasksToSend = [];
-    
-      for (const user of departmentUsers) {
-        const task = new Task({
-          title: adminState[username].title,
-          description: adminState[username].description,
-          department: adminState[username].department,
-          username,
-          photo: adminState[username].photo || null,
-          assignedTo: user.username, // Каждому индивидуально
-          deadline: manualDeadline,
-          status: 'pending',
-          notified: false
-        });
-    
-        // Сохраняем задачу
-        await task.save();
-    
-        // Сохраняем информацию о задаче для отправки
-        tasksToSend.push(task);
+        // Для администратора или субадмина
+        let departmentToUse;
+
+        if (adminState[username].subadminDepartments && adminState[username].subadminDepartments.length > 0) {
+          // Если это субадмин, берем департамент из selectedDepartment, если он есть
+          departmentToUse = adminState[username].selectedDepartment || adminState[username].subadminDepartments[0]; // Берем первый департамент из списка
+        } else {
+          // Если это админ, берем департамент из selectedDepartment или department
+          departmentToUse = adminState[username].selectedDepartment || adminState[username].department;
+        }
+
+        // Запрос пользователей на основе выбранного департамента
+        let departmentUsers = await User.find({ department: departmentToUse });
+        departmentUsers = departmentUsers.filter(user => user.role !== 'subadmin');
+        
+        const tasksToSend = [];
+        const assignedUsers = [];  
+
+         for (const user of departmentUsers) {
+           if (user.isSubAdmin) {
+            continue;  
+          }
+
+          const task = new Task({
+            title: adminState[username].title,  
+            description: adminState[username].description, 
+            department: departmentToUse,  
+            username,  
+            photo: adminState[username].photo || null,  
+            assignedTo: user.username,  
+            deadline: manualDeadline,
+            status: 'pending',  
+            notified: false  
+          });
+
+          // Сохраняем задачу
+          await task.save();
+
+          // Добавляем задачу в массив для дальнейшей отправки
+          tasksToSend.push(task);
+          
+          // Добавляем ник пользователя в массив assignedUsers
+          assignedUsers.push(user.username);
+        }
+
+        // После сохранения всех задач отправляем информацию
+        if (departmentUsers.length > 0) {
+          const task = tasksToSend[0]; // Берем первую задачу для отправки данных
+          await bot.sendMessage(chatId, `✅ Задача добавлена для сотрудников отдела ${departmentToUse} (${tasksToSend.length} человек)\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}\n\n📝 Задача назначена пользователям: ${assignedUsers.join(', ')}`);
+        } else {
+          await bot.sendMessage(chatId, `В выбранном департаменте (${departmentToUse}) нет сотрудников для назначения задачи.`);
+        }
       }
-    
-      // После сохранения всех задач отправляем информацию
-      const task = tasksToSend[0]; // Берем первую задачу для отправки данных
-      await bot.sendMessage(chatId, `✅ Задача добавлена для всех сотрудников отдела ${adminState[username].department} (${departmentUsers.length} человек)\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
-    }
     
     const userId = msg.from.id;
     

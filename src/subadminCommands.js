@@ -1,4 +1,4 @@
-const { bot, adminState, subadminMenu } = require('./utils');
+const { bot, adminState, subadminMenu, departmentList } = require('./utils');
 const User = require('../models/userDB');
 const Task = require('../models/taskDB');
 
@@ -19,7 +19,8 @@ async function handleSubadminCommands(msg, text, username) {
 
   if (!user || user.role !== 'subadmin') return;
 
-  const department = user.department;
+ // Получаем все подразделения, за которые субадмин отвечает
+ const subadminDepartments = user.subadminDepartments; // Массив с подразделениями, за которые субадмин отвечает
 
   if (text === '🏠 Главное меню') {
     delete adminState[username];
@@ -28,15 +29,15 @@ async function handleSubadminCommands(msg, text, username) {
 
   if (text === '👥 Мои сотрудники') {
     try {
-      // Получим всех пользователей с ролью 'user' в отделе
-      const users = await User.find({ department, role: 'user' });
+      // Получим всех пользователей с ролью 'user' в одном из подразделений субадмина
+      const users = await User.find({ department: { $in: subadminDepartments }, role: 'user' });
 
       if (!users.length) {
-        return bot.sendMessage(chatId, `В отделе "${department}" нет сотрудников.`, subadminMenu);
+        return bot.sendMessage(chatId, `В ваших подразделениях нет сотрудников.`, subadminMenu);
       }
 
       const list = users.map(u => `@${u.username}`).join('\n');
-      return bot.sendMessage(chatId, `👥 Сотрудники отдела "${department}":\n\n${list}`, subadminMenu);
+      return bot.sendMessage(chatId, `👥 Сотрудники ваших подразделений:\n\n${list}`, subadminMenu);
 
     } catch (err) {
       return bot.sendMessage(chatId, 'Произошла ошибка при получении списка сотрудников. Попробуйте позже.', subadminMenu);
@@ -44,62 +45,99 @@ async function handleSubadminCommands(msg, text, username) {
   }
 
   if (text === '📝 Поставить задачу') {
+
     adminState[username] = {
-      step: 'awaitingTargetAudience',
-      department: department,
+      step: 'awaitingDepartmentSelection',
+      subadminDepartments,
       role: 'subadmin'
     };
-    return bot.sendMessage(chatId, 'Кому поставить задачу?', {
+
+    // Формируем кнопки для выбора подразделений
+    const departmentButtons = subadminDepartments.map(dep => {
+      const department = departmentList.find(d => d.name === dep);
+      return [`${department.emoji} ${department.name}`];
+    });
+
+    departmentButtons.push(['🏠 Главное меню']);
+    return bot.sendMessage(chatId, 'Выберите подразделение:', {
       reply_markup: {
-        keyboard: [['📢 Всем сотрудникам отдела'], ['👤 Определённому пользователю'], ['🏠 Главное меню']],
+        keyboard: departmentButtons,
         resize_keyboard: true
       }
     });
-  }
+}
 
-  if (adminState[username]) {
+if (adminState[username]) {
     const state = adminState[username];
 
     switch (state.step) {
+      case 'awaitingDepartmentSelection':
+        const departmentEntry = departmentList.find(dep => `${dep.emoji} ${dep.name}` === text);
+
+        if (!departmentEntry || !subadminDepartments.includes(departmentEntry.name)) {
+          return bot.sendMessage(chatId, 'Выберите подразделение из списка.');
+        }
+        
+        state.selectedDepartment = departmentEntry.name;        
+    
+        state.step = 'awaitingTargetAudience'; // Переходим к следующему шагу выбора аудитории
+
+        // Запрашиваем, кому поставить задачу
+        return bot.sendMessage(chatId, 'Кому поставить задачу?', {
+          reply_markup: {
+            keyboard: [['📢 Всем сотрудникам отдела'], ['👤 Определённому пользователю'], ['🏠 Главное меню']],
+            resize_keyboard: true
+          }
+        });
+
       case 'awaitingTargetAudience':
         if (text === '📢 Всем сотрудникам отдела') {
-          state.target = 'all';
+          state.target = 'all';  // Задача будет поставлена всем сотрудникам отдела
           state.step = 'awaitingTaskTitle';
           return bot.sendMessage(chatId, 'Введите название задачи.');
         }
 
         if (text === '👤 Определённому пользователю') {
-          const users = await User.find({ department });
-          if (!users.length) return bot.sendMessage(chatId, 'В вашем отделе нет сотрудников.');
+          // Получаем список пользователей выбранного подразделения
+          const users = await User.find({ department: state.selectedDepartment, role: 'user' });
 
-          state.target = 'user';
-          state.step = 'awaitingTargetUsername';
+          if (!users.length) {
+            return bot.sendMessage(chatId, 'В выбранном отделе нет сотрудников.', subadminMenu);
+          }
 
           const buttons = users.map(u => [`@${u.username}`]);
           buttons.push(['🏠 Главное меню']);
+
+          state.target = 'user';  // Задача будет поставлена конкретному пользователю
+          state.step = 'awaitingTargetUsername';
+
           return bot.sendMessage(chatId, 'Выберите пользователя:', {
             reply_markup: { keyboard: buttons, resize_keyboard: true }
           });
         }
         break;
-
+    
+  
       case 'awaitingTargetUsername':
-        const selectedUser = await User.findOne({ username: text.slice(1) }); // Ожидаем @username
-        if (!selectedUser) {
-          return bot.sendMessage(chatId, 'Пользователь не найден. Выберите другого.', {
+        const targetUsername = text.startsWith('@') ? text.slice(1) : text;  // Извлекаем username пользователя
+        const selectedUser = await User.findOne({ username: targetUsername });
+  
+        if (!selectedUser || selectedUser.department !== state.selectedDepartment) {
+          return bot.sendMessage(chatId, 'Пользователь не найден в выбранном подразделении. Выберите другого.', {
             reply_markup: { keyboard: [['🏠 Главное меню']], resize_keyboard: true }
           });
         }
-
+  
+        // Записываем пользователя, которому будет поставлена задача
         state.targetUsername = selectedUser.username;
         state.step = 'awaitingTaskTitle';
         return bot.sendMessage(chatId, 'Введите название задачи.');
-
+  
       case 'awaitingTaskTitle':
-        state.title = text;
+        state.title = text;  // Сохраняем название задачи
         state.step = 'awaitingTaskDescription';
         return bot.sendMessage(chatId, 'Введите описание задачи.');
-
+  
       case 'awaitingTaskDescription':
         await awaitingTaskDescription(bot, chatId, adminState, username, text);
         break;
