@@ -10,8 +10,12 @@ const {
   awaitingDeadlineTime,
   awaitingManualTimeInput
 } = require('./deadlineHandler');
-const { notifySubadminOnTaskCompletion } = require('./notifications'); 
 
+const {
+  handleUserCommands
+} = require('./userCommands');  
+
+const { notifySubadminOnTaskCompletion } = require('./notifications'); 
 
 async function handleSubadminCommands(msg, text, username) {
   const chatId = msg.chat.id;
@@ -163,6 +167,7 @@ if (adminState[username]) {
         break;
     }
   }
+    await handleUserCommands(msg, text, username);
 }
 
 // Завершение задачи

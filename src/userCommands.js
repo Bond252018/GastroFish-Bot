@@ -338,7 +338,7 @@ async function handleUserCommands(msg, text, username) {
         return bot.sendMessage(chatId, '📋 У вас нет невыполненных задач.');
       }
   
-      let taskList = '📋 *Мои невыполненные задачи:*\n';
+      let taskList = '📋 *Мои невыполненные задачи за 24 часа:*\n';
       allTasks.forEach(task => {
         const deadlineStr = formatDateTimeRu(new Date(task.deadline));
         const overdueMark = task.status === 'overdue' ? '❗️' : '';
@@ -380,4 +380,10 @@ async function handleExecuteTask(chatId, taskId, callbackQuery) {
   }
 }
 
-module.exports = { handleUserCommands };
+module.exports = {
+  handleUserCommands,
+  handleExecuteTask,
+  handleCompleteTask,
+  handleViewTask,
+  sendTasksMessage
+};

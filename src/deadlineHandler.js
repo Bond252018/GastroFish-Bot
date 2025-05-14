@@ -91,7 +91,7 @@ async function awaitingDeadlineDate(bot, chatId, adminState, username, text) {
   if (!/^\d{2}\.\d{2}\.\d{4}$/.test(text)) {
     return bot.sendMessage(chatId, 'Введите дату в формате ДД.ММ.ГГГГ или выберите из списка.');
   }
-
+  
   adminState[username].deadlineDate = text;
   adminState[username].step = 'awaitingDeadlineTime';
   return sendKeyboard(bot, chatId, 'Теперь выберите время дедлайна:', [
@@ -106,6 +106,17 @@ async function awaitingDeadlineDate(bot, chatId, adminState, username, text) {
 async function awaitingManualDateInput(bot, chatId, adminState, username, text) {
   if (!/^\d{2}\.\d{2}\.\d{4}$/.test(text)) {
     return bot.sendMessage(chatId, 'Неверный формат. Введите дату в формате ДД.ММ.ГГГГ');
+  }
+
+   const [day, month, year] = text.split('.').map(Number);
+  const enteredDate = new Date(year, month - 1, day);  
+  enteredDate.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (enteredDate < today) {
+    return bot.sendMessage(chatId, 'Эта дата уже прошла. Пожалуйста, введите сегодняшнюю или будущую дату.');
   }
 
   adminState[username].deadlineDate = text;
@@ -135,6 +146,12 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
     const [hours, minutes] = timePart.split(':');
     const deadline = convertUkraineLocalToUTC(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
   
+ // Проверяем, что дата и время не в прошлом
+    const currentTime = new Date();
+    if (deadline < currentTime) {
+      return bot.sendMessage(chatId, '❌ Дедлайн не может быть в прошлом. Попробуйте выбрать другую дату и время.');
+    }
+
     if (isNaN(deadline.getTime())) {
       return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
     }
@@ -173,20 +190,19 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
         }
 
         // Запрос пользователей на основе выбранного департамента
-        let departmentUsers = await User.find({ department: departmentToUse });
-        departmentUsers = departmentUsers.filter(user => user.role !== 'subadmin');
-        
+          let departmentUsers = await User.find({
+            $or: [
+              { department: departmentToUse }, // Обычные пользователи в департаменте
+              { subadminDepartments: departmentToUse } // Субадмины в департаменте
+            ]
+          });         
         // Массив для сохранения задач
         const tasksToSend = [];
         const assignedUsers = []; // Массив для хранения ников пользователей, которым назначены задачи
 
         // Перебираем пользователей и исключаем субадминов
         for (const user of departmentUsers) {
-          // Проверка, является ли пользователь субадмином (предполагаем, что у вас есть флаг или роль)
-          if (user.isSubAdmin) {
-            continue; // Пропускаем создание задачи для этого пользователя
-          }
-
+        
           // Создаем задачу для остальных пользователей
           const task = new Task({
             title: adminState[username].title, // Название задачи
@@ -244,21 +260,25 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
       return bot.sendMessage(chatId, 'Введите время в формате ЧЧ:ММ, например: 18:00');
     }
   
-    const manualDate = adminState[username].deadlineDate;
-    const manualTime = text;
-    const [d, m, y] = manualDate.split('.');
-    const [h, min] = manualTime.split(':');
-    const manualDeadline = convertUkraineLocalToUTC(
-      Number(y),
-      Number(m) - 1,
-      Number(d),
-      Number(h),
-      Number(min)
-    );
-      
-    if (isNaN(manualDeadline.getTime())) {
-      return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
+const manualDate = adminState[username].deadlineDate; // дата в формате 'дд.мм.гггг'
+const manualTime = text; // время в формате 'чч:мм'
+
+// Преобразуем дату и время в числа
+const [d, m, y] = manualDate.split('.').map(Number);
+const [h, min] = manualTime.split(':').map(Number);
+
+// Конвертируем в UTC
+const manualDeadline = convertUkraineLocalToUTC(y, m - 1, d, h, min);
+
+  // Проверяем, что дата и время не в прошлом
+    const currentTime = new Date();
+    if (manualDeadline < currentTime) {
+      return bot.sendMessage(chatId, '❌ Дедлайн не может быть в прошлом. Попробуйте выбрать другую дату и время.');
     }
+
+if (isNaN(manualDeadline.getTime())) {
+  return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
+}
   
     // Сохраняем дату и время
     adminState[username].deadline = manualDeadline;
@@ -295,17 +315,17 @@ async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, t
         }
 
         // Запрос пользователей на основе выбранного департамента
-        let departmentUsers = await User.find({ department: departmentToUse });
-        departmentUsers = departmentUsers.filter(user => user.role !== 'subadmin');
-        
+          let departmentUsers = await User.find({
+            $or: [
+              { department: departmentToUse }, // Обычные пользователи в департаменте
+              { subadminDepartments: departmentToUse } // Субадмины в департаменте
+            ]
+          });   
+               
         const tasksToSend = [];
         const assignedUsers = [];  
 
          for (const user of departmentUsers) {
-           if (user.isSubAdmin) {
-            continue;  
-          }
-
           const task = new Task({
             title: adminState[username].title,  
             description: adminState[username].description, 

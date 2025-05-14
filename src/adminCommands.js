@@ -14,35 +14,40 @@ const {
 async function handleAdminCommands(msg, text, username, adminIds) {
   const chatId = msg.chat.id;
 
-    if (text === '👥 Список пользователей') {
-      try {
-        const users = await User.find({});
-        if (users.length === 0) return bot.sendMessage(chatId, 'Нет зарегистрированных пользователей.');
+   if (text === '👥 Список пользователей') {
+  try {
+    const users = await User.find({});
+    if (users.length === 0) return bot.sendMessage(chatId, 'Нет зарегистрированных пользователей.');
 
-        const sortedUsers = users.sort((a, b) => {
-          const roleOrder = { admin: 0, subadmin: 1, user: 2 };
-          return roleOrder[a.role] - roleOrder[b.role];
-        });
+    const sortedUsers = users.sort((a, b) => {
+      const roleOrder = { admin: 0, subadmin: 1, user: 2 };
+      return roleOrder[a.role] - roleOrder[b.role];
+    });
 
-        const userList = users.map(user => {
-          const username = `@${user.username}`;
-        
-          if (user.role === 'admin') {
-            return `${username} — Админ`;
-          }
-        
-          if (user.role === 'subadmin') {
-            return `${username} — Субадмин ${user.department || 'не указано'}`;
-          }
-        
-          return `${username} — ${user.department || 'не назначено'}`;
-        }).join('\n');
-
-        return bot.sendMessage(chatId, `Список пользователей:\n\n${userList}`, adminMainMenu);
-      } catch (error) {
-        return bot.sendMessage(chatId, 'Произошла ошибка при получении списка пользователей. Попробуйте снова.');
+    const userList = users.map(user => {
+      const username = `@${user.username}`;
+      
+      if (user.role === 'admin') {
+        return `${username} — Админ`;
       }
-    }
+      
+      if (user.role === 'subadmin') {
+        // Если у субадмина есть выбранные департаменты, выводим их
+        const departments = user.subadminDepartments.length > 0 
+          ? user.subadminDepartments.join(', ') 
+          : 'не указано';  // Если департаменты не выбраны, показываем "не указано"
+        return `${username} — Субадмин ${departments}`;
+      }
+
+      // Для обычных пользователей
+      return `${username} — ${user.department || 'не назначено'}`;
+    }).join('\n');
+
+    return bot.sendMessage(chatId, `Список пользователей:\n\n${userList}`, adminMainMenu);
+  } catch (error) {
+    return bot.sendMessage(chatId, 'Произошла ошибка при получении списка пользователей. Попробуйте снова.');
+  }
+}
 
     if (text === '📥 Добавить пользователя') {
       adminState[username] = { step: 'awaitingUsername' };
@@ -76,105 +81,105 @@ async function handleAdminCommands(msg, text, username, adminIds) {
       });
     }
     
-if (text === '👑 Назначить субадмина') {
-  adminState[username] = { step: 'awaitingSubadminUsername' };
-  return bot.sendMessage(chatId, 'Введите username пользователя, которого нужно назначить субадмином (в формате @username).');
-}
-
-if (adminState[username]?.step === 'awaitingSubadminUsername') {
-  const subadminUsername = text.replace('@', '').trim();
-  const userToAssign = await User.findOne({ username: subadminUsername });
-
-  if (!userToAssign) {
-    return bot.sendMessage(chatId, 'Пользователь не найден. Убедитесь, что он уже начал взаимодействие с ботом.');
-  }
-
-  adminState[username] = {
-    step: 'choosingDepartments',
-    subadminUsername: subadminUsername,
-    selectedDepartments: []
-  };
-
-  return bot.sendMessage(chatId, `Выберите до 5 отделов, за которые будет отвечать @${subadminUsername}`, {
-    reply_markup: {
-      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['✅ Готово', '❌ Отмена']],
-      resize_keyboard: true
-    }
-  });
-}
-
-if (adminState[username]?.step === 'choosingDepartments') {
-  const state = adminState[username];
-
-  if (text === '✅ Готово') {
-    if (state.selectedDepartments.length === 0) {
-      return bot.sendMessage(chatId, 'Вы не выбрали ни одного отдела.');
+    if (text === '👑 Назначить субадмина') {
+      adminState[username] = { step: 'awaitingSubadminUsername' };
+      return bot.sendMessage(chatId, 'Введите username пользователя, которого нужно назначить субадмином (в формате @username).');
     }
 
-    const userToUpdate = await User.findOne({ username: state.subadminUsername });
-    userToUpdate.role = 'subadmin';
-    userToUpdate.subadminDepartments = state.selectedDepartments;
-    await userToUpdate.save();
+    if (adminState[username]?.step === 'awaitingSubadminUsername') {
+      const subadminUsername = text.replace('@', '').trim();
+      const userToAssign = await User.findOne({ username: subadminUsername });
 
-    delete adminState[username];
-    return bot.sendMessage(chatId, `Пользователь @${userToUpdate.username} назначен субадмином в отделах: ${state.selectedDepartments.join(', ')}`, adminMainMenu);
-  }
+      if (!userToAssign) {
+        return bot.sendMessage(chatId, 'Пользователь не найден. Убедитесь, что он уже начал взаимодействие с ботом.');
+      }
 
-  if (text === '❌ Отмена') {
-    delete adminState[username];
-    return bot.sendMessage(chatId, 'Назначение субадмина отменено.', adminMainMenu);
-  }
+      adminState[username] = {
+        step: 'choosingDepartments',
+        subadminUsername: subadminUsername,
+        selectedDepartments: []
+      };
 
-  const selected = departmentList.find(d => `${d.emoji} ${d.name}` === text);
-  if (!selected) return bot.sendMessage(chatId, 'Выберите корректный отдел.');
-
-  const name = selected.name;
-  const alreadySelected = state.selectedDepartments.includes(name);
-
-  if (alreadySelected) {
-    state.selectedDepartments = state.selectedDepartments.filter(d => d !== name);
-  } else {
-    if (state.selectedDepartments.length >= 5) {
-      return bot.sendMessage(chatId, 'Можно выбрать не более 5 отделов.');
+      return bot.sendMessage(chatId, `Выберите до 5 отделов, за которые будет отвечать @${subadminUsername}`, {
+        reply_markup: {
+          keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['✅ Готово', '❌ Отмена']],
+          resize_keyboard: true
+        }
+      });
     }
-    state.selectedDepartments.push(name);
-  }
 
-  return bot.sendMessage(chatId, `Выбраны отделы: ${state.selectedDepartments.join(', ') || 'пока ничего'}.\nНажмите ✅ Готово для завершения или выберите еще.`, {
-    reply_markup: {
-      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['✅ Готово', '❌ Отмена']],
-      resize_keyboard: true
+    if (adminState[username]?.step === 'choosingDepartments') {
+      const state = adminState[username];
+
+      if (text === '✅ Готово') {
+        if (state.selectedDepartments.length === 0) {
+          return bot.sendMessage(chatId, 'Вы не выбрали ни одного отдела.');
+        }
+
+        const userToUpdate = await User.findOne({ username: state.subadminUsername });
+        userToUpdate.role = 'subadmin';
+        userToUpdate.subadminDepartments = state.selectedDepartments;
+        await userToUpdate.save();
+
+        delete adminState[username];
+        return bot.sendMessage(chatId, `Пользователь @${userToUpdate.username} назначен субадмином в отделах: ${state.selectedDepartments.join(', ')}`, adminMainMenu);
+      }
+
+      if (text === '❌ Отмена') {
+        delete adminState[username];
+        return bot.sendMessage(chatId, 'Назначение субадмина отменено.', adminMainMenu);
+      }
+
+      const selected = departmentList.find(d => `${d.emoji} ${d.name}` === text);
+      if (!selected) return bot.sendMessage(chatId, 'Выберите корректный отдел.');
+
+      const name = selected.name;
+      const alreadySelected = state.selectedDepartments.includes(name);
+
+      if (alreadySelected) {
+        state.selectedDepartments = state.selectedDepartments.filter(d => d !== name);
+      } else {
+        if (state.selectedDepartments.length >= 5) {
+          return bot.sendMessage(chatId, 'Можно выбрать не более 5 отделов.');
+        }
+        state.selectedDepartments.push(name);
+      }
+
+      return bot.sendMessage(chatId, `Выбраны отделы: ${state.selectedDepartments.join(', ') || 'пока ничего'}.\nНажмите ✅ Готово для завершения или выберите еще.`, {
+        reply_markup: {
+          keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['✅ Готово', '❌ Отмена']],
+          resize_keyboard: true
+        }
+      });
     }
-  });
-}
 
- if (text === '🧹 Удалить субадмина') {
-  adminState[username] = { step: 'awaitingRemoveSubadminUsername' };
-  return bot.sendMessage(chatId, 'Введите username субадмина, которого нужно удалить (в формате @username).');
-}
+    if (text === '🧹 Удалить субадмина') {
+      adminState[username] = { step: 'awaitingRemoveSubadminUsername' };
+      return bot.sendMessage(chatId, 'Введите username субадмина, которого нужно удалить (в формате @username).');
+    }
 
- if (adminState[username]?.step === 'awaitingRemoveSubadminUsername') {
-  const subadminUsername = text.replace('@', '').trim();
-  const userToRemove = await User.findOne({ username: subadminUsername });
+    if (adminState[username]?.step === 'awaitingRemoveSubadminUsername') {
+      const subadminUsername = text.replace('@', '').trim();
+      const userToRemove = await User.findOne({ username: subadminUsername });
 
-  if (!userToRemove) {
-    return bot.sendMessage(chatId, 'Пользователь не найден. Убедитесь, что он уже начал взаимодействие с ботом.');
-  }
+      if (!userToRemove) {
+        return bot.sendMessage(chatId, 'Пользователь не найден. Убедитесь, что он уже начал взаимодействие с ботом.');
+      }
 
-  if (userToRemove.role !== 'subadmin') {
-    return bot.sendMessage(chatId, 'Этот пользователь не является субадмином.');
-  }
+      if (userToRemove.role !== 'subadmin') {
+        return bot.sendMessage(chatId, 'Этот пользователь не является субадмином.');
+      }
 
-   userToRemove.role = 'user';  // или можно оставить, но убрать права субадмина
-  userToRemove.subadminDepartments = [];  // Очистка подразделений
+      userToRemove.role = 'user';  // или можно оставить, но убрать права субадмина
+      userToRemove.subadminDepartments = [];  // Очистка подразделений
 
-  await userToRemove.save();
+      await userToRemove.save();
 
-  // Удаляем из состояния админа
-  delete adminState[username];
+      // Удаляем из состояния админа
+      delete adminState[username];
 
-  return bot.sendMessage(chatId, `Пользователь @${subadminUsername} больше не является субадмином. Его права были удалены.`, adminMainMenu);
-}
+      return bot.sendMessage(chatId, `Пользователь @${subadminUsername} больше не является субадмином. Его права были удалены.`, adminMainMenu);
+    }
 
    
     if (text === '📋 Невыполненные задачи') {
@@ -423,7 +428,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
   }
 }
 
-
 if (text === '📊 Статистика выполненных заказов') {
   adminState[username] = { step: 'awaitingDepartmentForStats' };
   return bot.sendMessage(chatId, 'Выберите отдел для статистики:', {
@@ -568,12 +572,28 @@ if (adminState[username]?.step === 'awaitingDepartmentForStats') {
           }
 
           if (text === '👤 Определённому пользователю') {
-            const users = await User.find({ department: adminState[username].department });
-            if (!users.length) return bot.sendMessage(chatId, 'В выбранном отделе нет пользователей.');
+            const department = adminState[username]?.department;
+
+            if (!department) {
+              return bot.sendMessage(chatId, 'Выберите департамент.');
+            }
+
+            // Ищем пользователей, которые либо в выбранном департаменте, либо являются субадминами этого департамента
+            const users = await User.find({
+              $or: [
+                { department: department },  // обычные пользователи в департаменте
+                { subadminDepartments: department }  // субадмины, которые ответственны за департамент
+              ]
+            });
+
+            if (!users.length) {
+              return bot.sendMessage(chatId, 'В выбранном департаменте нет пользователей.');
+            }
 
             adminState[username].target = 'user';
             adminState[username].step = 'awaitingTargetUsername';
 
+            // Создаем кнопки для всех найденных пользователей
             const buttons = users.map(u => [`@${u.username}`]);
             buttons.push(['🏠 Главное меню']);
 
