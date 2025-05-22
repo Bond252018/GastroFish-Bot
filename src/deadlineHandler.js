@@ -158,7 +158,7 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
 
     adminState[username].deadline = deadline;
 
-    if (adminState[username].target === 'user') {
+if (adminState[username].target === 'user' || adminState[username].target === 'admin') {
       // Задача для одного конкретного пользователя
       const task = new Task({
         title: adminState[username].title,
@@ -173,10 +173,51 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
       });
     
       await task.save();
-    
-      // Отправляем информацию для конкретного пользователя
-      await bot.sendMessage(chatId, `✅ Задача добавлена для @${task.assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
-    } else {
+     // Получаем данные о цели назначения задачи
+      const targetDisplay = adminState[username].target === 'admin' ? 'администратора' : 'пользователя';
+      const assignedTo = adminState[username].targetUsername; // Username пользователя
+      const targetTelegramId = adminState[username].targetTelegramId; // Telegram ID
+
+      // Проверяем, что у нас есть Telegram ID или Username для отправки
+      let targetChatId = null;
+
+      // Если есть Telegram ID, отправляем через него
+      if (targetTelegramId) {
+        targetChatId = targetTelegramId;
+      } 
+      // Если нет Telegram ID, но есть Username, ищем chatId по username
+      else if (assignedTo) {
+        const recipient = await User.findOne({ username: assignedTo });
+
+        if (!recipient || !recipient.telegramId) {
+          console.error('❌ Не найден пользователь или у него нет Telegram ID');
+          await bot.sendMessage(chatId, 'Ошибка: не удалось отправить задачу — Telegram ID пользователя не найден.');
+          return;
+        }
+
+        targetChatId = recipient.telegramId;
+      } else {
+        console.error('❌ Не найден ни Telegram ID, ни Username для назначения задачи.');
+        await bot.sendMessage(chatId, 'Ошибка: не найден пользователь для назначения задачи.');
+        return;
+      }
+
+        // Уведомляем исполнителя
+        await bot.sendMessage(
+          targetChatId,
+         `📬 Вам назначена новая задача:\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n\nℹ️ Для просмотра и выполнения задачи зайдите в раздел «Мои задачи» в меню.`
+        );
+
+        // Подтверждение отправителю
+        await bot.sendMessage(
+          chatId,
+          `✅ Задача добавлена для ${targetDisplay} @${assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}`
+        );
+
+        adminState[username].step = null; // ✅ Сброс шага
+
+
+     } else {
       // Задача для всех в отделе
         // Для администратора или субадмина
         let departmentToUse;
@@ -195,12 +236,15 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
               { department: departmentToUse }, // Обычные пользователи в департаменте
               { subadminDepartments: departmentToUse } // Субадмины в департаменте
             ]
-          });         
+          });   
+          
+          departmentUsers = departmentUsers.filter(user => user.username !== username);
+
         // Массив для сохранения задач
         const tasksToSend = [];
         const assignedUsers = []; // Массив для хранения ников пользователей, которым назначены задачи
 
-        // Перебираем пользователей и исключаем субадминов
+        // Перебираем пользователей 
         for (const user of departmentUsers) {
         
           // Создаем задачу для остальных пользователей
@@ -224,8 +268,17 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
           
           // Добавляем ник пользователя в массив assignedUsers
           assignedUsers.push(user.username);
-        }
 
+          // Уведомляем пользователя, если у него есть Telegram ID
+          if (user.telegramId) {
+           await bot.sendMessage(
+            user.telegramId,
+            `📬 Вам назначена новая задача:\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n\nℹ️ Для просмотра и выполнения задачи зайдите в раздел «Мои задачи» в меню.`
+          );
+          } else {
+            console.warn(`⚠️ Пользователь ${user.username} не имеет telegramId`);
+          }
+        }
         // После сохранения всех задач отправляем информацию
         if (departmentUsers.length > 0) {
           const task = tasksToSend[0]; // Берем первую задачу для отправки данных
@@ -234,7 +287,9 @@ async function awaitingDeadlineTime(msg, bot, chatId, adminState, username, text
           await bot.sendMessage(chatId, `В выбранном департаменте (${departmentToUse}) нет сотрудников для назначения задачи.`);
         }
       }
-    
+      
+    adminState[username].step = null; // ✅ Сброс шага
+
     const userId = msg.from.id;
     
     let role = adminState[userId]?.role;
@@ -283,7 +338,7 @@ if (isNaN(manualDeadline.getTime())) {
     // Сохраняем дату и время
     adminState[username].deadline = manualDeadline;
   
-    if (adminState[username].target === 'user') {
+    if (adminState[username].target === 'user' || adminState[username].target === 'admin') {
       // Задача для одного конкретного пользователя
       const task = new Task({
         title: adminState[username].title,
@@ -298,10 +353,49 @@ if (isNaN(manualDeadline.getTime())) {
       });
     
       await task.save();
-    
-      // Отправляем информацию для конкретного пользователя
-      await bot.sendMessage(chatId, `✅ Задача добавлена для @${task.assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}`);
-    } else {
+     // Получаем данные о цели назначения задачи
+      const targetDisplay = adminState[username].target === 'admin' ? 'администратора' : 'пользователя';
+      const assignedTo = adminState[username].targetUsername; // Username пользователя
+      const targetTelegramId = adminState[username].targetTelegramId; // Telegram ID
+
+      // Проверяем, что у нас есть Telegram ID или Username для отправки
+      let targetChatId = null;
+
+      // Если есть Telegram ID, отправляем через него
+      if (targetTelegramId) {
+        targetChatId = targetTelegramId;
+      } 
+      // Если нет Telegram ID, но есть Username, ищем chatId по username
+      else if (assignedTo) {
+        const recipient = await User.findOne({ username: assignedTo });
+
+        if (!recipient || !recipient.telegramId) {
+          console.error('❌ Не найден пользователь или у него нет Telegram ID');
+          await bot.sendMessage(chatId, 'Ошибка: не удалось отправить задачу — Telegram ID пользователя не найден.');
+          return;
+        }
+
+        targetChatId = recipient.telegramId;
+      } else {
+        console.error('❌ Не найден ни Telegram ID, ни Username для назначения задачи.');
+        await bot.sendMessage(chatId, 'Ошибка: не найден пользователь для назначения задачи.');
+        return;
+      }
+
+        // Уведомляем исполнителя
+        await bot.sendMessage(
+          targetChatId,
+         `📬 Вам назначена новая задача:\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n\nℹ️ Для просмотра и выполнения задачи зайдите в раздел «Мои задачи» в меню.`
+        );
+
+        // Подтверждение отправителю
+        await bot.sendMessage(
+          chatId,
+          `✅ Задача добавлена для ${targetDisplay} @${assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}`
+        );
+
+        adminState[username].step = null; // ✅ Сброс шага
+     } else {
       // Задача для всех в отделе
         // Для администратора или субадмина
         let departmentToUse;
@@ -346,6 +440,16 @@ if (isNaN(manualDeadline.getTime())) {
           
           // Добавляем ник пользователя в массив assignedUsers
           assignedUsers.push(user.username);
+
+          // Уведомляем пользователя, если у него есть Telegram ID
+          if (user.telegramId) {
+           await bot.sendMessage(
+            user.telegramId,
+            `📬 Вам назначена новая задача:\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n\nℹ️ Для просмотра и выполнения задачи зайдите в раздел «Мои задачи» в меню.`
+          );
+          } else {
+            console.warn(`⚠️ Пользователь ${user.username} не имеет telegramId`);
+          }
         }
 
         // После сохранения всех задач отправляем информацию

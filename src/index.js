@@ -24,7 +24,7 @@ bot.onText(/\/start/, async (msg) => {
   if (adminIds.includes(telegramId)) {
     if (!user) {
       user = new User({
-        username,
+        username: msg.from.username || 'без_username',
         telegramId,
         chatId,
         department: 'не назначено',

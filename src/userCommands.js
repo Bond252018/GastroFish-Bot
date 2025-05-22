@@ -1,9 +1,8 @@
 require('dotenv').config();  // Загружаем переменные из .env
 
 const { notifyCreatorOnTaskCompletion } = require('./notifications'); 
-const { bot, formatDateTimeRu, User, Task } = require('./utils');
+const { bot, formatDateTimeRu, escapeMarkdownV2, User, Task } = require('./utils');
 const { adminIds } = require('../constants/constants');
-
 
 // Функция для отправки сообщений с кнопками
 async function sendTasksMessage(chatId, tasks) {
@@ -27,42 +26,40 @@ async function sendTasksMessage(chatId, tasks) {
 async function handleViewTask(chatId, messageId, taskId) {
   try {
     const task = await Task.findById(taskId);
-    if (task) {
-      const department = task.department || "Не указано";
-      const deadline = task.deadline ? new Date(task.deadline) : null;
-
-      const formattedDeadline = deadline 
-        ? `${deadline.toLocaleDateString('ru-RU')} ${deadline.toLocaleTimeString('ru-RU')}` 
-        : 'Без дедлайна';
-
-      // Добавляем информацию о дедлайне в текст задачи
-      const taskText = `📝 *Задача:* ${task.title}\n📌 *Описание:* ${task.description}\n🏢 *Подразделение:* ${department}\n📅 *Дедлайн:* ${formattedDeadline}\n\n✅ Чтобы выполнить, нажмите кнопку ниже:`;
-
-      const inlineKeyboard = [
-        [{ text: '✅ Выполнить', callback_data: `complete_task_${taskId}` }],
-        [{ text: '🔙 Назад', callback_data: `back_to_tasks` }]
-      ];
-
-      if (task.photo) {
-        await bot.deleteMessage(chatId, messageId).catch((err) => {
-      });
-
-        await bot.sendPhoto(chatId, task.photo, {
-          caption: taskText,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: inlineKeyboard }
-        });
-      } else {
-        await bot.editMessageText(taskText, {
-          chat_id: chatId,
-          message_id: messageId,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: inlineKeyboard }
-        });
-      }
-    } else {
+    if (!task) {
       await bot.sendMessage(chatId, '❌ Задача не найдена.');
+      return;
     }
+
+    const department = task.department || "Не указано";
+    const deadline = task.deadline ? new Date(task.deadline) : null;
+    const formattedDeadline = deadline 
+      ? `${deadline.toLocaleDateString('ru-RU')} ${deadline.toLocaleTimeString('ru-RU')}` 
+      : 'Без дедлайна';
+
+    const taskText = `📝 *Задача:* ${escapeMarkdownV2(task.title)}\n📌 *Описание:* ${escapeMarkdownV2(task.description)}\n🏢 *Подразделение:* ${escapeMarkdownV2(department)}\n📅 *Дедлайн:* ${escapeMarkdownV2(formattedDeadline)}\n\n✅ Чтобы выполнить, нажмите кнопку ниже:`;
+
+    const inlineKeyboard = [
+      [{ text: '✅ Выполнить', callback_data: `complete_task_${taskId}` }],
+      [{ text: '🔙 Назад', callback_data: `back_to_tasks` }]
+    ];
+
+    if (task.photo) {
+      await bot.deleteMessage(chatId, messageId).catch(() => {}); // Удаляем старое сообщение
+      await bot.sendPhoto(chatId, task.photo, {
+        caption: taskText,
+        parse_mode: 'MarkdownV2',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      });
+    } else {
+      await bot.editMessageText(taskText, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'MarkdownV2',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      });
+    }
+
   } catch (error) {
     await bot.sendMessage(chatId, '❌ Произошла ошибка при обработке запроса.');
   }
@@ -281,74 +278,62 @@ await bot.sendMessage(chatId, '❌ Произошла ошибка при обр
 async function handleUserCommands(msg, text, username) {
   const chatId = msg.chat.id;
 
-  if (text === '📋 Мои задачи' && !adminIds.includes(msg.from.id)) {
-    try {
-      const user = await User.findOne({ username: username });
-      if (!user) {
-        return bot.sendMessage(chatId, 'Ваши данные не найдены в системе.');
-      }
-  
-      // Получаем задачи пользователя
+   try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return bot.sendMessage(chatId, '❌ Не удалось найти информацию о вашем пользователе.');
+    }
+
+    const now = new Date();
+    const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+
+    if (text === '📋 Мои задачи') {
       const userTasks = await Task.find({
         assignedTo: username,
         isCompleted: false,
         status: { $ne: 'overdue' },
-        deadline: { $gt: new Date() } // Добавим проверку, чтобы дедлайн ещё не прошёл
+        deadline: { $gt: now }
       });
-      
+
       if (userTasks.length > 0) {
         await sendTasksMessage(chatId, userTasks);
       } else {
-        await bot.sendMessage(chatId, 'У вас нет незавершённых задач.');
+        await bot.sendMessage(chatId, '📋 У вас нет активных задач.');
       }
-    } catch (error) {
-      await bot.sendMessage(chatId, 'Произошла ошибка при обработке запроса.');
     }
-  }
-  
-  // Обработчик команды "📋 Мои невыполненные задачи"
-  if (text === '📋 Мои невыполненные задачи') {
-    try {
-      const user = await User.findOne({ username: username });
-      if (!user) {
-        return bot.sendMessage(chatId, '❌ Не удалось найти информацию о вашем пользователе.');
-      }
-  
-      const now = new Date();
-      const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
-  
-      // 1. Невыполненные за последние 24 часа
+
+    if (text === '📋 Мои невыполненные задачи') {
       const recentTasks = await Task.find({
-        assignedTo: user.username,
+        assignedTo: username,
         isCompleted: false,
         createdAt: { $gte: oneDayAgo },
-        completedBy: { $ne: user.username }
+        completedBy: { $ne: username }
       });
-  
-      // 2. Просроченные задачи (status: 'overdue')
+
       const overdueTasks = await Task.find({
-        assignedTo: user.username,
+        assignedTo: username,
         isCompleted: false,
         status: 'overdue'
       });
-  
+
       const allTasks = [...recentTasks, ...overdueTasks];
-  
+
       if (allTasks.length === 0) {
         return bot.sendMessage(chatId, '📋 У вас нет невыполненных задач.');
       }
-  
+
       let taskList = '📋 *Мои невыполненные задачи за 24 часа:*\n';
       allTasks.forEach(task => {
         const deadlineStr = formatDateTimeRu(new Date(task.deadline));
         const overdueMark = task.status === 'overdue' ? '❗️' : '';
         taskList += `- ${overdueMark} ${task.title} (🕒 ${deadlineStr})\n`;
       });
-  
+
       await bot.sendMessage(chatId, taskList, { parse_mode: 'Markdown' });
-    } catch (error) {
-      await bot.sendMessage(chatId, 'Произошла ошибка при обработке вашего запроса.');
     }
+  } catch (error) {
+    console.error('❌ Ошибка при обработке задач:', error);
+    await bot.sendMessage(chatId, 'Произошла ошибка при обработке вашего запроса.');
   }
 }
 
@@ -363,7 +348,7 @@ async function handleExecuteTask(chatId, taskId, callbackQuery) {
     const username = callbackQuery.from.username || 'Неизвестно';
 
     // Формируем сообщение с вариантами
-    const taskText = `📝 *Задача:* ${task.title}\n📌 *Описание:* ${task.description}\n\n❓ Что хотите сделать с этой задачей?`;
+const taskText = `📝 *Задача:* ${escapeMarkdownV2(task.title)}\n📌*Описание:* ${escapeMarkdownV2(task.description)}\n\n❓ Что хотите сделать с этой задачей?`;
 
     const inlineKeyboard = [
       [{ text: '📸 Прикрепить фото', callback_data: `attach_photo_${taskId}` }],
@@ -371,10 +356,11 @@ async function handleExecuteTask(chatId, taskId, callbackQuery) {
       [{ text: '🔙 Назад', callback_data: `back_to_tasks` }]
     ];
 
-    await bot.sendMessage(chatId, taskText, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: inlineKeyboard }
-    });
+   await bot.sendMessage(chatId, taskText, {
+  parse_mode: 'MarkdownV2',
+  reply_markup: { inline_keyboard: inlineKeyboard }
+});
+
   } catch (error) {
     await bot.sendMessage(chatId, '❌ Произошла ошибка.');
   }

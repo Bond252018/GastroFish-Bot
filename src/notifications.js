@@ -1,49 +1,33 @@
-const { bot, formatDateTimeRu, User } = require('./utils');
-const { adminIds } = require('../constants/constants');
-
-
+const { bot, formatDateTimeRu, escapeMarkdownV2, User } = require('./utils');
+ 
 async function notifyCreatorOnTaskCompletion(task) {
   try {
-    const department = task.department || 'Не указано';
-    const formattedDeadline = formatDateTimeRu(task.deadline);
-    const completedText = `✅ Задача выполнена!\n\n📌 *Название:* ${task.title}\n📝 *Описание:* ${task.description}\n🏢 *Отдел:* ${department}\n📅 *Дедлайн:* ${formattedDeadline}\n👤 *Выполнил:* ${task.completedBy || 'Неизвестно'}`;
-    // Получаем username того, кто поставил задачу
+const completedText = 
+  escapeMarkdownV2('✅ Задача выполнена!') + '\n\n' +
+  escapeMarkdownV2(`📌 Название: ${task.title}`) + '\n' +
+  escapeMarkdownV2(`📝 Описание: ${task.description}`) + '\n' +
+  escapeMarkdownV2(`🏢 Подразделение: ${task.department || 'Не указано'}`) + '\n' +
+  escapeMarkdownV2(`📅 Дедлайн: ${formatDateTimeRu(task.deadline)}`) + '\n' +
+  escapeMarkdownV2(`👤 Выполнил: ${task.completedBy || 'Неизвестно'}`);
+
     const creatorUsername = Array.isArray(task.username) ? task.username[0] : task.username;
     const creator = await User.findOne({ username: creatorUsername });
 
-    if (!creator) {
-      return;
+    if (!creator) return;
+    
+    const chatId = creator.telegramId || creator.userId;
+    if (!chatId) return;
+     
+    // Уведомляем только того, кто создал задачу
+    if (task.photo) {
+      await bot.sendPhoto(chatId, task.photo, {
+        caption: completedText,
+        parse_mode: 'MarkdownV2',
+      });
+    } else {
+      await bot.sendMessage(chatId, completedText, { parse_mode: 'MarkdownV2' });
     }
-
-     // Если задача от субадмина — отправляем только ему
-     const chatId = creator.telegramId || creator.userId;
-     if (!chatId) return;
- 
-     if (creator.role === 'subadmin') {
-       // Уведомляем только субадмина
-       if (task.photo) {
-         await bot.sendPhoto(chatId, task.photo, {
-           caption: completedText,
-           parse_mode: 'Markdown',
-         });
-       } else {
-         await bot.sendMessage(chatId, completedText, { parse_mode: 'Markdown' });
-       }
-     } else if (creator.role === 'admin') {
-       // Если задача от админа — уведомляем только администраторов
-       for (const adminId of adminIds) {
-         if (task.photo) {
-           await bot.sendPhoto(adminId, task.photo, {
-             caption: completedText,
-             parse_mode: 'Markdown',
-           });
-         } else {
-           await bot.sendMessage(adminId, completedText, { parse_mode: 'Markdown' });
-         }
-       }
-     }
- 
-   } catch (error) {
+  } catch (error) {
   }
 }
 

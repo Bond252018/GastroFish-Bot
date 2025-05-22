@@ -43,6 +43,32 @@ function escapeHTML(str) {
     .replace(/>/g, '&gt;');
 }
 
+function escapeMarkdownV2(str) {
+  if (typeof str !== 'string') {
+    return String(str);  // Преобразуем в строку, если это не строка
+  }
+
+  return str
+    .replace(/_/g, '\\_')
+    .replace(/\*/g, '\\*')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/\~/g, '\\~')
+    .replace(/\`/g, '\\`')
+    .replace(/\>/g, '\\>')
+    .replace(/\#/g, '\\#')
+    .replace(/\+/g, '\\+')
+    .replace(/\-/g, '\\-')
+    .replace(/\=/g, '\\=')
+    .replace(/\|/g, '\\|')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\./g, '\\.')
+    .replace(/!/g, '\\!');  // Экранируем восклицательный знак
+}
+
 function formatDateTimeRu(date) {
   if (!date) return 'Не указано';
 
@@ -88,6 +114,7 @@ const adminMainMenu = {
       ['👑 Назначить субадмина', '🧹 Удалить субадмина'],
       ['📋 Невыполненные задачи', '📗 Выполненные задачи'],
       ['🧹 Удалить просроченные задачи', '📊 Статистика выполненных заказов'],
+      [ '📋 Мои задачи', '📋 Мои невыполненные задачи'],
       ['📂 Документы'],  
       ['🏠 Главное меню'],
     ],
@@ -120,4 +147,4 @@ const userMenu = {
 
 
 // Экспортируем необходимые данные
-module.exports = { bot, isValidUsername, escapeHTML, formatDateTimeRu,  departmentList, adminState, adminMainMenu, subadminMenu, userMenu, Document, User, Task };
+module.exports = { bot, isValidUsername, escapeHTML, escapeMarkdownV2, formatDateTimeRu,  departmentList, adminState, adminMainMenu, subadminMenu, userMenu, Document, User, Task };

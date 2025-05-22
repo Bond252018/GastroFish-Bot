@@ -10,6 +10,10 @@ const {
   awaitingManualTimeInput,
 } = require('./deadlineHandler');
 
+const {
+  handleUserCommands
+} = require('./userCommands');  
+
 
 async function handleAdminCommands(msg, text, username, adminIds) {
   const chatId = msg.chat.id;
@@ -59,28 +63,87 @@ async function handleAdminCommands(msg, text, username, adminIds) {
       return bot.sendMessage(chatId, 'Введите username пользователя для удаления (в формате @username).');
     }
     if (text === '📝 Поставить задачу') {
-      // Проверяем, существует ли уже запись для пользователя
-      if (!adminState[username]) {
-        adminState[username] = {
-          step: 'awaitingDepartment', // Шаг для администратора
-          role: 'admin' // Устанавливаем роль как 'admin' при создании новой записи
-        };
-      } else {
-        // Если запись уже существует, не перезаписываем роль, только добавляем текущий шаг
-        adminState[username].step = 'awaitingDepartment';
-      }
-      
-      return bot.sendMessage(chatId, 'Выберите отдел:', {
-        reply_markup: {
-          keyboard: [
-            ...departmentList.map(d => [`${d.emoji} ${d.name}`]),
-            ['🏠 Главное меню']
-          ],
-          resize_keyboard: true
-        }
-      });
+    if (!adminState[username]) {
+      adminState[username] = {
+        step: 'awaitingTarget',
+        role: 'admin'
+      };
+    } else {
+      adminState[username].step = 'awaitingTarget';
     }
-    
+
+    return bot.sendMessage(chatId, 'Кому поставить задачу?', {
+      reply_markup: {
+        keyboard: [
+          ['📋 Подразделению', '👤 Администратору'],
+          ['🏠 Главное меню']
+        ],
+        resize_keyboard: true
+      }
+    });
+  }
+
+  // 📋 Подразделению
+    if (adminState[username]?.step === 'awaitingTarget' && text === '📋 Подразделению') {
+    adminState[username].step = 'awaitingDepartment';
+
+    return bot.sendMessage(chatId, 'Выберите отдел:', {
+      reply_markup: {
+        keyboard: [
+          ...departmentList.map(d => [`${d.emoji} ${d.name}`]),
+          ['🏠 Главное меню']
+        ],
+        resize_keyboard: true
+      }
+    });
+  }
+    if (adminState[username]?.step === 'awaitingTarget') {
+  if (text === '👤 Администратору') {
+    const currentId = msg.from.id.toString();
+
+    // Загружаем всех других админов из базы
+    const otherAdmins = await User.find({
+      role: 'admin',
+      telegramId: { $ne: currentId }
+    });
+
+    if (!otherAdmins.length) {
+      return bot.sendMessage(chatId, 'Нет других администраторов.');
+    }
+
+    adminState[username].step = 'awaitingAdmin';
+
+    return bot.sendMessage(chatId, 'Выберите администратора:', {
+      reply_markup: {
+        keyboard: [
+          ...otherAdmins.map(admin => [`@${admin.username}`]),
+          ['🏠 Главное меню']
+        ],
+        resize_keyboard: true
+      }
+    });
+  }
+  }
+    if (adminState[username]?.step === 'awaitingAdmin') {
+    const targetUsername = text.replace('@', '').trim();
+
+  const targetAdmin = await User.findOne({
+    username: targetUsername,
+    role: 'admin'
+  });
+
+  if (!targetAdmin) {
+    return bot.sendMessage(chatId, 'Администратор не найден.');
+  }
+
+  // Устанавливаем те же поля, что и при выборе обычного пользователя
+  adminState[username].target = 'admin';
+  adminState[username].targetUsername = targetAdmin.username;
+  adminState[username].targetTelegramId = targetAdmin.telegramId;
+  adminState[username].step = 'awaitingTaskTitle';
+
+  return bot.sendMessage(chatId, `Введите название задачи для администратора @${targetAdmin.username}:`);
+  }
     if (text === '👑 Назначить субадмина') {
       adminState[username] = { step: 'awaitingSubadminUsername' };
       return bot.sendMessage(chatId, 'Введите username пользователя, которого нужно назначить субадмином (в формате @username).');
@@ -374,18 +437,35 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
   }
 }
 
-
 // Обработчик команды для удаления просроченных задач
 if (text === '🧹 Удалить просроченные задачи') {
-  adminState[username] = { step: 'awaitingDepartmentForDelete' };
+  adminState[username] = { step: 'awaitingDeleteTarget' };
 
-  return bot.sendMessage(chatId, 'Выберите отдел для удаления просроченных задач:', {
+  return bot.sendMessage(chatId, 'Кому удалить просроченные задачи?', {
     reply_markup: {
-      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['⬅️ Главное меню']],
+      keyboard: [
+        ['📋 Подразделению', '👤 Администраторам'],
+        ['🏠 Главное меню']
+      ],
       resize_keyboard: true
     }
   });
 }
+
+if (
+  adminState[username]?.step === 'awaitingDeleteTarget' &&
+  text === '📋 Подразделению'
+) {
+  adminState[username].step = 'awaitingDepartmentForDelete';
+
+  return bot.sendMessage(chatId, 'Выберите отдел для удаления просроченных задач:', {
+    reply_markup: {
+      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🏠 Главное меню']],
+      resize_keyboard: true
+    }
+  });
+}
+
 
 // Шаг 2: Фильтрация по выбранному отделу для удаления просроченных задач
 if (adminState[username] && adminState[username].step === 'awaitingDepartmentForDelete') {
@@ -427,6 +507,55 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     return bot.sendMessage(chatId, 'Произошла ошибка при удалении просроченных задач. Попробуйте позже.');
   }
 }
+
+if (
+  adminState[username]?.step === 'awaitingDeleteTarget' &&
+  text === '👤 Администраторам'
+) {
+  try {
+    // Находим всех администраторов
+    const admins = await User.find({ role: 'admin' });
+
+    if (!admins.length) {
+      adminState[username] = null;
+      return bot.sendMessage(chatId, 'Администраторы не найдены.', adminMainMenu);
+    }
+
+    const usernames = admins.map(a => a.username);
+
+    // Сначала проверим, есть ли вообще задачи
+    const tasksToDelete = await Task.find({
+      assignedTo: { $in: usernames },
+      status: { $in: ['overdue', 'expired', 'pending'] }
+    });
+
+    if (tasksToDelete.length === 0) {
+      adminState[username] = null;
+      return bot.sendMessage(chatId, 'Нет просроченных задач, назначенных администраторам.', adminMainMenu);
+    }
+
+    // Удаляем задачи
+    const result = await Task.deleteMany({
+      assignedTo: { $in: usernames },
+      status: { $in: ['overdue', 'expired', 'pending'] }
+    });
+
+    adminState[username] = null;
+
+    return bot.sendMessage(
+      chatId,
+      `✅ Удалено ${result.deletedCount} просроченных задач, назначенных администраторам.`,
+      adminMainMenu
+    );
+  } catch (error) {
+    console.error('Ошибка при удалении задач администраторов:', error);
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Произошла ошибка при удалении задач.', adminMainMenu);
+  }
+}
+
+
+
 
 if (text === '📊 Статистика выполненных заказов') {
   adminState[username] = { step: 'awaitingDepartmentForStats' };
@@ -644,6 +773,7 @@ if (adminState[username]?.step === 'awaitingDepartmentForStats') {
             break; 
       }
     }
+     await handleUserCommands(msg, text, username);
   }
   
 bot.on('photo', async (msg) => {
