@@ -45,29 +45,31 @@ function escapeHTML(str) {
 
 function escapeMarkdownV2(str) {
   if (typeof str !== 'string') {
-    return String(str);  // Преобразуем в строку, если это не строка
+    return String(str);
   }
-
+  
   return str
+    .replace(/\\/g, '\\\\')  // сначала экранируем обратный слеш
     .replace(/_/g, '\\_')
     .replace(/\*/g, '\\*')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]')
     .replace(/\(/g, '\\(')
     .replace(/\)/g, '\\)')
-    .replace(/\~/g, '\\~')
-    .replace(/\`/g, '\\`')
-    .replace(/\>/g, '\\>')
-    .replace(/\#/g, '\\#')
+    .replace(/~/g, '\\~')
+    .replace(/`/g, '\\`')
+    .replace(/>/g, '\\>')
+    .replace(/#/g, '\\#')
     .replace(/\+/g, '\\+')
-    .replace(/\-/g, '\\-')
-    .replace(/\=/g, '\\=')
+    .replace(/-/g, '\\-')
+    .replace(/=/g, '\\=')
     .replace(/\|/g, '\\|')
     .replace(/\{/g, '\\{')
     .replace(/\}/g, '\\}')
     .replace(/\./g, '\\.')
-    .replace(/!/g, '\\!');  // Экранируем восклицательный знак
+    .replace(/!/g, '\\!');
 }
+
 
 function formatDateTimeRu(date) {
   if (!date) return 'Не указано';
