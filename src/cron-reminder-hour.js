@@ -9,7 +9,14 @@ cron.schedule('*/5 * * * *', async () => {
   const hourLater = new Date(now.getTime() + 60 * 60 * 1000);
 
   try {
-    const tasks = await Task.find({ isCompleted: false }); // Получаем все незавершенные задачи
+  const tasks = await Task.find({    // Получаем все незавершенные задачи
+    isCompleted: false,
+    $or: [
+      { status: { $ne: 'overdue' } },  // не просроченные
+      { overdueNotified: { $ne: true } } // или просроченные, но без уведомления
+    ]
+  });
+
 
     for (let task of tasks) {
       const deadline = new Date(task.deadline);
