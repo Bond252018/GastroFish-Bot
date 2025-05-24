@@ -73,9 +73,14 @@ const reminderText = `⏰ Напоминание: задача *${escapeMarkdown
 
 
           // Админам и субадминам
+         if (task.createdByAdminId) {
+          await bot.sendMessage(task.createdByAdminId, reportText, { parse_mode: 'MarkdownV2' });
+        } else {
+          // fallback — если не указано, отправим всем (чтобы ничего не пропустить)
           for (let adminId of adminIds) {
             await bot.sendMessage(adminId, reportText, { parse_mode: 'MarkdownV2' });
           }
+        }
 
           // Уведомления для субадминов департамента
           const subadmins = await User.find({ subadminDepartments: task.department });
@@ -123,14 +128,19 @@ const reminderText = `⏰ Напоминание: задача *${escapeMarkdown
             }
           }
 
-          const user = await User.findOne({ username: task.assignedTo });
+         const user = await User.findOne({ username: task.assignedTo });
 
-          if (user?.telegramId && user.role !== 'subadmin') {
-        await bot.sendMessage(user.telegramId, `❗️ Задача "${escapeMarkdownV2(task.title)}" не была выполнена вовремя и теперь перемещена в "Мои невыполненные задачи".`, { parse_mode: 'MarkdownV2' });
+          if (user?.telegramId) {
+            await bot.sendMessage(
+              user.telegramId,
+              `❗️ Задача "${escapeMarkdownV2(task.title)}" не была выполнена вовремя и теперь перемещена в "Мои невыполненные задачи".`,
+              { parse_mode: 'MarkdownV2' }
+            );
           }
 
           task.status = 'overdue';
           task.category = 'невыполненные';
+          task.overdueNotified = true; // помечаем, что уведомление отправлено
           await task.save();
         }
       }
