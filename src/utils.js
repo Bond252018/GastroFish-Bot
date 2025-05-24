@@ -70,6 +70,31 @@ function escapeMarkdownV2(str) {
     .replace(/!/g, '\\!');
 }
 
+function escapeMarkdownV2Username(str) {
+  if (typeof str !== 'string') {
+    return String(str);
+  }
+  return str
+    .replace(/\\/g, '\\\\')  // обязательно экранируем обратный слеш
+    // НЕ экранируем _
+    .replace(/\*/g, '\\*')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/~/g, '\\~')
+    .replace(/`/g, '\\`')
+    .replace(/>/g, '\\>')
+    .replace(/#/g, '\\#')
+    .replace(/\+/g, '\\+')
+    .replace(/-/g, '\\-')
+    .replace(/=/g, '\\=')
+    .replace(/\|/g, '\\|')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\./g, '\\.')
+    .replace(/!/g, '\\!');
+}
 
 function formatDateTimeRu(date) {
   if (!date) return 'Не указано';
@@ -149,4 +174,4 @@ const userMenu = {
 
 
 // Экспортируем необходимые данные
-module.exports = { bot, isValidUsername, escapeHTML, escapeMarkdownV2, formatDateTimeRu,  departmentList, adminState, adminMainMenu, subadminMenu, userMenu, Document, User, Task };
+module.exports = { bot, isValidUsername, escapeHTML, escapeMarkdownV2, escapeMarkdownV2Username, formatDateTimeRu,  departmentList, adminState, adminMainMenu, subadminMenu, userMenu, Document, User, Task };

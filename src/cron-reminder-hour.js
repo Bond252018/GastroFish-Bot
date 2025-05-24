@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { bot, formatDateTimeRu, escapeMarkdownV2, Task, User } = require('./utils'); 
+const { bot, formatDateTimeRu, escapeMarkdownV2, escapeMarkdownV2Username, Task, User } = require('./utils'); 
 const { adminIds } = require('../constants/constants');
 
 console.log('⏰ Планировщик задач запущен...');
@@ -68,8 +68,8 @@ const reminderText = `⏰ Напоминание: задача *${escapeMarkdown
   `📅 Дедлайн: ${escapeMarkdownV2(deadlineStr)}\n` +
   `👤 Назначено: всем в отделе\n` +
   notCompletedUsers
-    .map(user => `❌ Не выполнено сотрудником ${escapeMarkdownV2('@' + user.username)}`)
-    .join('\n');
+  .map(user => `❌ Не выполнено сотрудником ${escapeMarkdownV2Username('@' + user.username)}`)
+  .join('\n');
 
 
           // Админам и субадминам
@@ -101,12 +101,12 @@ const reminderText = `⏰ Напоминание: задача *${escapeMarkdown
           await task.save();
         } else if (task.assignedTo) {
           // Задача назначена одному сотруднику
-        const responsible = task.assignedTo ? escapeMarkdownV2('@' + task.assignedTo) : 'всем сотрудникам отдела';
+          const responsible = task.assignedTo ? '@' + task.assignedTo : 'всем сотрудникам отдела';
 
           for (let adminId of adminIds) {
-          await bot.sendMessage(
-           adminId,
-            `❌ Задача *"${escapeMarkdownV2(task.title)}"* \\(отдел: ${escapeMarkdownV2(task.department)}\\) не выполнена пользователем: ${escapeMarkdownV2(responsible)}\n\nДедлайн был: *${escapeMarkdownV2(deadlineStr)}*`,
+        await bot.sendMessage(
+          adminId,
+            `❌ Задача *"${escapeMarkdownV2(task.title)}"* \\(отдел: ${escapeMarkdownV2(task.department)}\\) не выполнена пользователем: ${escapeMarkdownV2Username(responsible)}\n\nДедлайн был: *${escapeMarkdownV2(deadlineStr)}*`,
             { parse_mode: 'MarkdownV2' }
           );
         }
@@ -117,8 +117,8 @@ const reminderText = `⏰ Напоминание: задача *${escapeMarkdown
             if (subadmin.telegramId) {
               await bot.sendMessage(
                 subadmin.telegramId,
-                `❌ Задача *"${escapeMarkdownV2(task.title)}"* \\(отдел: ${escapeMarkdownV2(task.department)}\\) не выполнена пользователем: ${escapeMarkdownV2(responsible)}\n\nДедлайн был: *${escapeMarkdownV2(deadlineStr)}*`,
-                  { parse_mode: 'MarkdownV2' }
+                `❌ Задача *"${escapeMarkdownV2(task.title)}"* \\(отдел: ${escapeMarkdownV2(task.department)}\\) не выполнена пользователем: ${escapeMarkdownV2Username(responsible)}\n\nДедлайн был: *${escapeMarkdownV2(deadlineStr)}*`,
+                { parse_mode: 'MarkdownV2' }
               );
             }
           }
