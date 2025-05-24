@@ -22,7 +22,7 @@ cron.schedule('*/5 * * * *', async () => {
 
       // 🔔 Напоминание за 1 час до дедлайна
       if (deadline > now && deadline <= hourLater && !task.notified) {
-        const reminderText = `⏰ Напоминание: задача *"${escapeMarkdownV2(task.title)}"* должна быть завершена до *${escapeMarkdownV2(deadlineStr)}*`;
+const reminderText = `⏰ Напоминание: задача *${escapeMarkdownV2(task.title)}* должна быть завершена до *${escapeMarkdownV2(deadlineStr)}*`;
 
         try {
           if (task.assignedTo) {
@@ -62,14 +62,15 @@ cron.schedule('*/5 * * * *', async () => {
 
           const notCompletedUsers = departmentUsers.filter(user => !completedBy[user.username]);
 
-        const reportText = `🔸 ${escapeMarkdownV2(task.title)}\\n` +
-  `📄 Описание: ${escapeMarkdownV2(task.description)}\\n` +
-  `🏢 Отдел: ${escapeMarkdownV2(task.department)}\\n` +
-  `📅 Дедлайн: ${escapeMarkdownV2(deadlineStr)}\\n` +
-  `👤 Назначено: всем в отделе\\n` +
+      const reportText = `🔸 ${escapeMarkdownV2(task.title)}\n` +
+  `📄 Описание: ${escapeMarkdownV2(task.description)}\n` +
+  `🏢 Отдел: ${escapeMarkdownV2(task.department)}\n` +
+  `📅 Дедлайн: ${escapeMarkdownV2(deadlineStr)}\n` +
+  `👤 Назначено: всем в отделе\n` +
   notCompletedUsers
     .map(user => `❌ Не выполнено сотрудником ${escapeMarkdownV2('@' + user.username)}`)
-    .join('\\n');
+    .join('\n');
+
 
           // Админам и субадминам
           for (let adminId of adminIds) {
