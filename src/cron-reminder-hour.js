@@ -62,12 +62,14 @@ cron.schedule('*/5 * * * *', async () => {
 
           const notCompletedUsers = departmentUsers.filter(user => !completedBy[user.username]);
 
-         const reportText = `🔸 ${escapeMarkdownV2(task.title)}
-📄 Описание: ${escapeMarkdownV2(task.description)}
-🏢 Отдел: ${escapeMarkdownV2(task.department)}
-📅 Дедлайн: ${escapeMarkdownV2(deadlineStr)}
-👤 Назначено: всем в отделе
-${notCompletedUsers.map(user => `❌ Не выполнено сотрудником @${escapeMarkdownV2(user.username)}`).join('\n')}`;
+        const reportText = `🔸 ${escapeMarkdownV2(task.title)}\\n` +
+  `📄 Описание: ${escapeMarkdownV2(task.description)}\\n` +
+  `🏢 Отдел: ${escapeMarkdownV2(task.department)}\\n` +
+  `📅 Дедлайн: ${escapeMarkdownV2(deadlineStr)}\\n` +
+  `👤 Назначено: всем в отделе\\n` +
+  notCompletedUsers
+    .map(user => `❌ Не выполнено сотрудником ${escapeMarkdownV2('@' + user.username)}`)
+    .join('\\n');
 
           // Админам и субадминам
           for (let adminId of adminIds) {
@@ -98,7 +100,7 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
           await task.save();
         } else if (task.assignedTo) {
           // Задача назначена одному сотруднику
-          const responsible = task.assignedTo ? `@${task.assignedTo}` : 'всем сотрудникам отдела';
+        const responsible = task.assignedTo ? escapeMarkdownV2('@' + task.assignedTo) : 'всем сотрудникам отдела';
 
           for (let adminId of adminIds) {
           await bot.sendMessage(
