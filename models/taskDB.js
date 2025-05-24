@@ -19,8 +19,7 @@ const taskSchema = new mongoose.Schema({
   deadline: { type: Date },
   status: { type: String, default: 'pending' },
   notified: { type: Boolean, default: false },
-  overdueNotified: { type: Boolean, default: false },   // для уведомления о просрочке
-  createdByAdminId: { type: String }
+  overdueNotified: { type: Boolean, default: false }   // для уведомления о просрочке
 }, {
   timestamps: true // ⏱️ автоматически добавляет createdAt и updatedAt
 });

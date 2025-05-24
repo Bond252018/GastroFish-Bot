@@ -169,8 +169,7 @@ if (adminState[username].target === 'user' || adminState[username].target === 'a
         assignedTo: adminState[username].targetUsername,
         deadline,
         status: 'pending',
-        notified: false,
-        createdByAdminId: currentAdminId 
+        notified: false
       });
     
       await task.save();
@@ -258,8 +257,7 @@ if (adminState[username].target === 'user' || adminState[username].target === 'a
             assignedTo: user.username, // Пользователь, которому назначается задача
             deadline, // Дедлайн задачи
             status: 'pending', // Статус задачи
-            notified: false, // Не уведомлено
-            createdByAdminId: currentAdminId,  // сюда именно один id, а не массив
+            notified: false // Не уведомлено
           });
 
           // Сохраняем задачу
@@ -351,8 +349,7 @@ if (isNaN(manualDeadline.getTime())) {
         assignedTo: adminState[username].targetUsername,
         deadline: manualDeadline,
         status: 'pending',
-        notified: false,
-        createdByAdminId: currentAdminId,  // сюда именно один id, а не массив
+        notified: false
       });
     
       await task.save();
@@ -432,8 +429,7 @@ if (isNaN(manualDeadline.getTime())) {
             assignedTo: user.username,  
             deadline: manualDeadline,
             status: 'pending',  
-            notified: false,
-            createdByAdminId: currentAdminId,  // сюда именно один id, а не массив
+            notified: false  
           });
 
           // Сохраняем задачу

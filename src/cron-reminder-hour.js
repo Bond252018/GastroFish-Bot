@@ -73,14 +73,9 @@ const reminderText = `⏰ Напоминание: задача *${escapeMarkdown
 
 
           // Админам и субадминам
-         if (task.createdByAdminId) {
-          await bot.sendMessage(task.createdByAdminId, reportText, { parse_mode: 'MarkdownV2' });
-        } else {
-          // fallback — если не указано, отправим всем (чтобы ничего не пропустить)
           for (let adminId of adminIds) {
             await bot.sendMessage(adminId, reportText, { parse_mode: 'MarkdownV2' });
           }
-        }
 
           // Уведомления для субадминов департамента
           const subadmins = await User.find({ subadminDepartments: task.department });
