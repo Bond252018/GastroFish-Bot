@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { bot, formatDateTimeRu, Task, User } = require('./utils'); 
+const { bot, formatDateTimeRu, escapeMarkdownV2, Task, User } = require('./utils'); 
 const { adminIds } = require('../constants/constants');
 
 console.log('⏰ Планировщик задач запущен...');
@@ -22,14 +22,14 @@ cron.schedule('*/5 * * * *', async () => {
 
       // 🔔 Напоминание за 1 час до дедлайна
       if (deadline > now && deadline <= hourLater && !task.notified) {
-        const reminderText = `⏰ Напоминание: задача *"${task.title}"* должна быть завершена до *${deadlineStr}*`;
+        const reminderText = `⏰ Напоминание: задача *"${escapeMarkdownV2(task.title)}"* должна быть завершена до *${escapeMarkdownV2(deadlineStr)}*`;
 
         try {
           if (task.assignedTo) {
             // Назначено конкретному пользователю (независимо от роли)
             const user = await User.findOne({ username: task.assignedTo });
             if (user?.telegramId) {
-              await bot.sendMessage(user.telegramId, reminderText, { parse_mode: 'Markdown' });
+              await bot.sendMessage(user.telegramId, reminderText, { parse_mode: 'MarkdownV2' });
             }
           } else {
             // Назначено всем сотрудникам или субадминам департамента
@@ -43,7 +43,7 @@ cron.schedule('*/5 * * * *', async () => {
 
             for (let user of users) {
               if (!user.telegramId) continue;
-              await bot.sendMessage(user.telegramId, reminderText, { parse_mode: 'Markdown' });
+              await bot.sendMessage(user.telegramId, reminderText, { parse_mode: 'MarkdownV2' });
             }
           }
 
@@ -62,32 +62,36 @@ cron.schedule('*/5 * * * *', async () => {
 
           const notCompletedUsers = departmentUsers.filter(user => !completedBy[user.username]);
 
-          const reportText = `🔸 ${task.title}
-📄 Описание: ${task.description}
-🏢 Отдел: ${task.department}
-📅 Дедлайн: ${deadlineStr}
+         const reportText = `🔸 ${escapeMarkdownV2(task.title)}
+📄 Описание: ${escapeMarkdownV2(task.description)}
+🏢 Отдел: ${escapeMarkdownV2(task.department)}
+📅 Дедлайн: ${escapeMarkdownV2(deadlineStr)}
 👤 Назначено: всем в отделе
-${notCompletedUsers.map(user => `❌ Не выполнено сотрудником @${user.username}`).join('\n')}`;
+${notCompletedUsers.map(user => `❌ Не выполнено сотрудником @${escapeMarkdownV2(user.username)}`).join('\n')}`;
 
           // Админам и субадминам
           for (let adminId of adminIds) {
-            await bot.sendMessage(adminId, reportText, { parse_mode: 'Markdown' });
+            await bot.sendMessage(adminId, reportText, { parse_mode: 'MarkdownV2' });
           }
 
           // Уведомления для субадминов департамента
           const subadmins = await User.find({ subadminDepartments: task.department });
           for (let subadmin of subadmins) {
             if (subadmin.telegramId) {
-              await bot.sendMessage(subadmin.telegramId, reportText, { parse_mode: 'Markdown' });
+              await bot.sendMessage(subadmin.telegramId, reportText, { parse_mode: 'MarkdownV2' });
             }
           }
 
           // Пользователям
-          for (const user of notCompletedUsers) {
-            if (user.telegramId) {
-              await bot.sendMessage(user.telegramId, `❗️ Вы не выполнили задачу "${task.title}" вовремя.`, { parse_mode: 'Markdown' });
-            }
+         for (const user of notCompletedUsers) {
+          if (user.telegramId) {
+            await bot.sendMessage(
+              user.telegramId,
+              `❗️ Вы не выполнили задачу "${escapeMarkdownV2(task.title)}" вовремя.`,
+              { parse_mode: 'MarkdownV2' }
+            );
           }
+        }
 
           task.status = 'overdue';
           task.category = 'невыполненные';
@@ -97,12 +101,12 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
           const responsible = task.assignedTo ? `@${task.assignedTo}` : 'всем сотрудникам отдела';
 
           for (let adminId of adminIds) {
-            await bot.sendMessage(
-              adminId,
-              `❌ Задача *"${task.title}"* (отдел: ${task.department}) не выполнена пользователем: ${responsible}\n\nДедлайн был: *${deadlineStr}*`,
-              { parse_mode: 'Markdown' }
-            );
-          }
+          await bot.sendMessage(
+           adminId,
+            `❌ Задача *"${escapeMarkdownV2(task.title)}"* \\(отдел: ${escapeMarkdownV2(task.department)}\\) не выполнена пользователем: ${escapeMarkdownV2(responsible)}\n\nДедлайн был: *${escapeMarkdownV2(deadlineStr)}*`,
+            { parse_mode: 'MarkdownV2' }
+          );
+        }
 
           // Уведомления для субадминов департамента
           const subadmins = await User.find({ subadminDepartments: task.department });
@@ -110,8 +114,8 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
             if (subadmin.telegramId) {
               await bot.sendMessage(
                 subadmin.telegramId,
-                `❌ Задача *"${task.title}"* (отдел: ${task.department}) не выполнена пользователем: ${responsible}\n\nДедлайн был: *${deadlineStr}*`,
-                { parse_mode: 'Markdown' }
+                `❌ Задача *"${escapeMarkdownV2(task.title)}"* \\(отдел: ${escapeMarkdownV2(task.department)}\\) не выполнена пользователем: ${escapeMarkdownV2(responsible)}\n\nДедлайн был: *${escapeMarkdownV2(deadlineStr)}*`,
+                  { parse_mode: 'MarkdownV2' }
               );
             }
           }
@@ -119,7 +123,7 @@ ${notCompletedUsers.map(user => `❌ Не выполнено сотрудник�
           const user = await User.findOne({ username: task.assignedTo });
 
           if (user?.telegramId && user.role !== 'subadmin') {
-            await bot.sendMessage(user.telegramId, `❗️ Задача "${task.title}" не была выполнена вовремя и теперь перемещена в "Мои невыполненные задачи".`, { parse_mode: 'Markdown' });
+        await bot.sendMessage(user.telegramId, `❗️ Задача "${escapeMarkdownV2(task.title)}" не была выполнена вовремя и теперь перемещена в "Мои невыполненные задачи".`, { parse_mode: 'MarkdownV2' });
           }
 
           task.status = 'overdue';
