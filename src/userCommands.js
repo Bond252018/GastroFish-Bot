@@ -93,6 +93,7 @@ async function handleCompleteTask(chatId, taskId, callbackQuery) {
 
     if (allCompleted) {
       task.isCompleted = true; // Если все завершили, задача завершена
+      task.status = 'completed'; // ✅ Меняем статус
       task.completedAt = new Date(); // Устанавливаем дату завершения
     }
 
@@ -318,12 +319,19 @@ async function handleUserCommands(msg, text, username) {
 
       const allTasks = [...recentTasks, ...overdueTasks];
 
-      if (allTasks.length === 0) {
+      // Убираем дубликаты по _id
+      const uniqueTasksMap = new Map();
+      allTasks.forEach(task => {
+        uniqueTasksMap.set(task._id.toString(), task);
+      });
+      const uniqueTasks = Array.from(uniqueTasksMap.values());
+
+      if (uniqueTasks.length === 0) {
         return bot.sendMessage(chatId, '📋 У вас нет невыполненных задач.');
       }
 
       let taskList = '📋 *Мои невыполненные задачи за 24 часа:*\n';
-      allTasks.forEach(task => {
+      uniqueTasks.forEach(task => {
         const deadlineStr = formatDateTimeRu(new Date(task.deadline));
         const overdueMark = task.status === 'overdue' ? '❗️' : '';
         taskList += `- ${overdueMark} ${task.title} (🕒 ${deadlineStr})\n`;

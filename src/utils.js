@@ -44,57 +44,18 @@ function escapeHTML(str) {
 }
 
 function escapeMarkdownV2(str) {
-  if (typeof str !== 'string') {
-    return String(str);
-  }
-  
-  return str
-    .replace(/\\/g, '\\\\')  // сначала экранируем обратный слеш
-    .replace(/_/g, '\\_')
-    .replace(/\*/g, '\\*')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/~/g, '\\~')
-    .replace(/`/g, '\\`')
-    .replace(/>/g, '\\>')
-    .replace(/#/g, '\\#')
-    .replace(/\+/g, '\\+')
-    .replace(/-/g, '\\-')
-    .replace(/=/g, '\\=')
-    .replace(/\|/g, '\\|')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/\./g, '\\.')
-    .replace(/!/g, '\\!');
+  if (typeof str !== 'string') return String(str);
+  return str.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
+
 
 function escapeMarkdownV2Username(str) {
   if (typeof str !== 'string') {
     return String(str);
   }
-  return str
-    .replace(/\\/g, '\\\\')  // обязательно экранируем обратный слеш
-    // НЕ экранируем _
-    .replace(/\*/g, '\\*')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/~/g, '\\~')
-    .replace(/`/g, '\\`')
-    .replace(/>/g, '\\>')
-    .replace(/#/g, '\\#')
-    .replace(/\+/g, '\\+')
-    .replace(/-/g, '\\-')
-    .replace(/=/g, '\\=')
-    .replace(/\|/g, '\\|')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/\./g, '\\.')
-    .replace(/!/g, '\\!');
+  return str[0] + str.slice(1).replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
 }
+
 
 function formatDateTimeRu(date) {
   if (!date) return 'Не указано';
