@@ -244,124 +244,62 @@ async function handleAdminCommands(msg, text, username, adminIds) {
       return bot.sendMessage(chatId, `Пользователь @${subadminUsername} больше не является субадмином. Его права были удалены.`, adminMainMenu);
     }
 
-   
-    if (text === '📋 Невыполненные задачи') {
-      // Шаг 1: Админ выбирает отдел
-      adminState[username] = { step: 'awaitingDepartmentForTasks' };
-      return bot.sendMessage(chatId, 'Выберите отдел для отображения невыполненных задач:', {
-        reply_markup: {
-          keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🏠 Главное меню']],
-          resize_keyboard: true
-        }
-      });
-    }
-    
-// Шаг 2: Фильтрация по выбранному отделу
-if (adminState[username] && adminState[username].step === 'awaitingDepartmentForTasks') {
-  const selectedDepartment = departmentList.find(d => `${d.emoji} ${d.name}` === text);
-  if (!selectedDepartment) return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
+   if (text === '📗 Выполненные задачи' || text === '📘 Невыполненные задачи') {
+  const isCompleted = text.includes('Выполненные');
+  adminState[username] = {
+    step: isCompleted ? 'awaitingDepartmentForCompletedTasks' : 'awaitingDepartmentForUncompletedTasks',
+    isCompleted,
+    mode: 'tasks'
+  };
 
-  adminState[username].department = selectedDepartment.name;
-
-  try {
-    // Анимация загрузки: создаём сообщение и обновляем его 3 раза с точками
-    let loadingText = '🔄 Загружаем задачи';
-    const loadingMessage = await bot.sendMessage(chatId, loadingText, { parse_mode: 'HTML' });
-
-    // Обновляем сообщение с задержкой
-    for (let i = 1; i <= 3; i++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await bot.editMessageText(`${loadingText}${'.'.repeat(i)}`, {
-        chat_id: chatId,
-        message_id: loadingMessage.message_id,
-        parse_mode: 'HTML'
-      });
-    }
-
-    const now = new Date();
-    const tasks = await Task.find({
-      department: selectedDepartment.name,
-      status: { $in: ['pending', 'overdue'] },
-      isCompleted: false
-    }).sort({ deadline: 1 });
-
-    let hasPendingTasks = false;
-    const maxMessageLength = 4000;
-    let currentPart = '';
-    const parts = [];
-
-    for (const task of tasks) {
-      if (!task.deadline) continue; // защита от пустых дат
-
-      const deadline = new Date(task.deadline);
-      const deadlinePassed = deadline < now;
-      const isExpired = deadlinePassed && (now - deadline > 24 * 60 * 60 * 1000);
-
-      if (isExpired) {
-        task.status = 'expired';
-        await task.save();
-        continue;
-      }
-
-      if (deadlinePassed) {
-        hasPendingTasks = true;
-        const deadlineStr = deadline.toLocaleString('ru-RU');
-
-        let taskText = `🔸 <b>${escapeHTML(task.title)}</b>\n`;
-        taskText += `📄 Описание: ${escapeHTML(task.description) || '—'}\n`;
-        taskText += `🏢 Отдел: ${escapeHTML(task.department)}\n`;
-        taskText += `📅 Дедлайн: ${escapeHTML(deadlineStr)}\n`;
-        taskText += task.assignedTo
-          ? `👤 Назначено: @${escapeHTML(task.assignedTo)}\n`
-          : `👤 Назначено: всем в отделе\n`;
-        taskText += '\n';
-
-        if (currentPart.length + taskText.length > maxMessageLength) {
-          parts.push(currentPart);
-          currentPart = taskText;
-        } else {
-          currentPart += taskText;
-        }
-      }
-    }
-
-    if (currentPart) parts.push(currentPart);
-
-    // Удаляем "загрузку..."
-    await bot.deleteMessage(chatId, loadingMessage.message_id);
-
-    if (!hasPendingTasks) {
-      await bot.sendMessage(chatId, 'Все задачи в этом отделе выполнены ✅', adminMainMenu);
-    } else {
-      await bot.sendMessage(chatId, `📋 Невыполненные задачи в отделе "${selectedDepartment.name}":`, {
-        parse_mode: 'HTML'
-      });
-
-      for (const part of parts) {
-        await bot.sendMessage(chatId, part, { parse_mode: 'HTML' });
-      }
-    }
-
-    adminState[username] = null;
-    return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
-
-  } catch (error) {
-    console.error('Ошибка при получении задач:', error);
-    return bot.sendMessage(chatId, 'Произошла ошибка при получении задач. Попробуйте позже.');
-  }
-}
-
-if (text === '📗 Выполненные задачи') {
-  adminState[username] = { step: 'awaitingDepartmentForCompletedTasks' };
-  return bot.sendMessage(chatId, 'Выберите отдел для отображения выполненных задач:', {
+  return bot.sendMessage(chatId, `Выберите отдел для отображения ${isCompleted ? 'выполненных' : 'невыполненных'} задач:`, {
     reply_markup: {
-      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🏠 Главное меню']],
+      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🧑‍💼 По администраторам', '🏠 Главное меню']],
       resize_keyboard: true
     }
   });
 }
 
-if (adminState[username] && adminState[username].step === 'awaitingDepartmentForCompletedTasks') {
+// 🔹 Вход в режим статистики
+if (text === '📊 Статистика выполненных задач') {
+  adminState[username] = {
+    step: 'awaitingDepartmentForStats',
+    mode: 'stats'
+  };
+
+  return bot.sendMessage(chatId, 'Выберите отдел для статистики:', {
+    reply_markup: {
+      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🧑‍💼 По администраторам', '🏠 Главное меню']],
+      resize_keyboard: true
+    }
+  });
+}
+
+if (adminState[username]?.mode === 'tasks' && adminState[username]?.step?.startsWith('awaitingDepartmentFor')) {
+  const mode = adminState[username].mode;
+  const isCompleted = adminState[username].isCompleted;
+
+  if (mode !== 'tasks') {
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Некорректное состояние. Попробуйте сначала.', adminMainMenu);
+  }
+
+  if (text === '🧑‍💼 По администраторам') {
+    const admins = await User.find({ role: 'admin' });
+    const adminUsernames = admins.map(admin => `@${admin.username}`);
+    adminState[username] = {
+      step: isCompleted ? 'awaitingAdminForCompletedTasks' : 'awaitingAdminForUncompletedTasks',
+      isCompleted,
+      mode: 'tasks'    };
+
+    return bot.sendMessage(chatId, 'Выберите администратора:', {
+      reply_markup: {
+        keyboard: chunk(adminUsernames, 2).concat([['🏠 Главное меню']]),
+        resize_keyboard: true
+      }
+    });
+  }
+
   const selectedDepartment = departmentList.find(d => `${d.emoji} ${d.name}` === text);
   if (!selectedDepartment) return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
 
@@ -370,27 +308,25 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
   try {
     const tasks = await Task.find({
       department: selectedDepartment.name,
-      isCompleted: true
-    }).sort({ completedAt: -1 });
+      isCompleted
+    }).sort({ [isCompleted ? 'completedAt' : 'createdAt']: -1 });
 
     if (tasks.length === 0) {
-      return bot.sendMessage(chatId, 'В этом отделе пока нет выполненных задач ✅', adminMainMenu);
+      adminState[username] = null;
+      return bot.sendMessage(chatId, `В этом отделе пока нет ${isCompleted ? 'выполненных' : 'невыполненных'} задач ✅`, adminMainMenu);
     }
 
-    // ⏳ Анимация загрузки
+    // ⏳ Анимация
     const loadingSteps = ['⏳ Загрузка задач', '⏳⏳ Загрузка задач', '⏳⏳⏳ Загрузка задач'];
     let loadingMessage = await bot.sendMessage(chatId, loadingSteps[0], { disable_notification: true });
-
     for (let i = 1; i < loadingSteps.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(r => setTimeout(r, 500));
       await bot.editMessageText(loadingSteps[i], {
         chat_id: chatId,
         message_id: loadingMessage.message_id
       }).catch(() => {});
     }
-
-    // Удалить сообщение после "анимации"
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(r => setTimeout(r, 300));
     await bot.deleteMessage(chatId, loadingMessage.message_id).catch(() => {});
 
     const maxMessageLength = 4000;
@@ -398,16 +334,14 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     const parts = [];
 
     for (const task of tasks) {
-      const completedAt = task.completedAt
-        ? new Date(task.completedAt).toLocaleString('ru-RU')
-        : '—';
       const deadline = new Date(task.deadline).toLocaleString('ru-RU');
+      const completedAt = task.completedAt ? new Date(task.completedAt).toLocaleString('ru-RU') : '—';
 
-      let taskText = `✅ <b>${escapeHTML(task.title)}</b>\n`;
+      let taskText = `${isCompleted ? '✅' : '🔹'} <b>${escapeHTML(task.title)}</b>\n`;
       taskText += `📄 Описание: ${escapeHTML(task.description) || '—'}\n`;
       taskText += `🏢 Отдел: ${escapeHTML(task.department)}\n`;
       taskText += `📅 Дедлайн: ${escapeHTML(deadline)}\n`;
-      taskText += `📆 Завершено: ${escapeHTML(completedAt)}\n`;
+      if (isCompleted) taskText += `📆 Завершено: ${escapeHTML(completedAt)}\n`;
       taskText += task.assignedTo
         ? `👤 Исполнитель: @${escapeHTML(task.assignedTo)}\n`
         : `👤 Исполнитель: не указан\n`;
@@ -423,8 +357,7 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
 
     if (currentPart) parts.push(currentPart);
 
-    await bot.sendMessage(chatId, `📗 Выполненные задачи в отделе "${selectedDepartment.name}":`, { parse_mode: 'HTML' });
-
+    await bot.sendMessage(chatId, `${isCompleted ? '📗 Выполненные' : '📘 Невыполненные'} задачи в отделе "${selectedDepartment.name}":`, { parse_mode: 'HTML' });
     for (const part of parts) {
       await bot.sendMessage(chatId, part, { parse_mode: 'HTML' });
     }
@@ -433,9 +366,226 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
 
   } catch (error) {
+    console.error(error);
+    adminState[username] = null;
     return bot.sendMessage(chatId, 'Произошла ошибка при получении задач. Попробуйте позже.');
   }
 }
+
+if (adminState[username]?.mode === 'tasks' && adminState[username]?.step?.startsWith('awaitingAdminFor')) {
+  const isCompleted = adminState[username].isCompleted;
+  const targetUsername = text.replace('@', '').trim();
+
+  const targetAdmin = await User.findOne({
+    username: targetUsername,
+    role: 'admin'
+  });
+
+  if (!targetAdmin) {
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Администратор не найден.');
+  }
+
+  try {
+    const tasks = await Task.find({
+      assignedTo: targetAdmin.username,
+      isCompleted
+    }).sort({ [isCompleted ? 'completedAt' : 'createdAt']: -1 });
+
+    if (tasks.length === 0) {
+      adminState[username] = null;
+      return bot.sendMessage(chatId, `У администратора @${targetAdmin.username} нет ${isCompleted ? 'выполненных' : 'невыполненных'} задач. 📭`, adminMainMenu);
+    }
+
+    // ⏳ Анимация
+    const loadingSteps = ['⏳ Загрузка задач', '⏳⏳ Загрузка задач', '⏳⏳⏳ Загрузка задач'];
+    let loadingMessage = await bot.sendMessage(chatId, loadingSteps[0], { disable_notification: true });
+    for (let i = 1; i < loadingSteps.length; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      await bot.editMessageText(loadingSteps[i], {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      }).catch(() => {});
+    }
+    await new Promise(r => setTimeout(r, 300));
+    await bot.deleteMessage(chatId, loadingMessage.message_id).catch(() => {});
+
+    const maxMessageLength = 4000;
+    let currentPart = '';
+    const parts = [];
+
+    for (const task of tasks) {
+      const deadline = new Date(task.deadline).toLocaleString('ru-RU');
+      const completedAt = task.completedAt ? new Date(task.completedAt).toLocaleString('ru-RU') : '—';
+
+      let taskText = `${isCompleted ? '✅' : '🔹'} <b>${escapeHTML(task.title)}</b>\n`;
+      taskText += `📄 Описание: ${escapeHTML(task.description) || '—'}\n`;
+      taskText += `🏢 Отдел: ${escapeHTML(task.department)}\n`;
+      taskText += `📅 Дедлайн: ${escapeHTML(deadline)}\n`;
+      if (isCompleted) taskText += `📆 Завершено: ${escapeHTML(completedAt)}\n`;
+      taskText += task.assignedTo
+        ? `👤 Исполнитель: @${escapeHTML(task.assignedTo)}\n`
+        : `👤 Исполнитель: не указан\n`;
+      taskText += '\n';
+
+      if (currentPart.length + taskText.length > maxMessageLength) {
+        parts.push(currentPart);
+        currentPart = taskText;
+      } else {
+        currentPart += taskText;
+      }
+    }
+
+    if (currentPart) parts.push(currentPart);
+
+    await bot.sendMessage(chatId, `${isCompleted ? '📗 Выполненные' : '📘 Невыполненные'} задачи администратора @${targetAdmin.username}:`, { parse_mode: 'HTML' });
+    for (const part of parts) {
+      await bot.sendMessage(chatId, part, { parse_mode: 'HTML' });
+    }
+
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
+
+  } catch (error) {
+    console.error(error);
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Произошла ошибка при получении задач. Попробуйте позже.');
+  }
+}
+
+// 🔧 Вспомогательная функция
+function chunk(arr, size) {
+  const res = [];
+  for (let i = 0; i < arr.length; i += size) {
+    res.push(arr.slice(i, i + size));
+  }
+  return res;
+}
+
+// 🔹 Статистика: выбор отдела или администратора
+if (adminState[username]?.mode === 'stats' && adminState[username]?.step === 'awaitingDepartmentForStats') {
+  // Выбор администратора
+  if (text === '🧑‍💼 По администраторам') {
+    const admins = await User.find({ role: 'admin' });
+    const adminUsernames = admins.map(admin => `@${admin.username}`);
+
+    adminState[username] = {
+      step: 'awaitingAdminForStats',
+      mode: 'stats'
+    };
+
+    return bot.sendMessage(chatId, 'Выберите администратора для просмотра статистики:', {
+      reply_markup: {
+        keyboard: chunk(adminUsernames, 2).concat([['🏠 Главное меню']]),
+        resize_keyboard: true
+      }
+    });
+  }
+
+  // Выбор отдела
+  const selectedDepartment = departmentList.find(d => `${d.emoji} ${d.name}` === text);
+  if (selectedDepartment) {
+    adminState[username] = null;
+
+    try {
+      const tasks = await Task.find({ department: selectedDepartment.name });
+
+      if (!tasks.length) {
+        return bot.sendMessage(chatId, `📭 Нет задач в отделе "${selectedDepartment.name}".`, adminMainMenu);
+      }
+
+      const userStats = {};
+
+      for (const task of tasks) {
+        const user = task.assignedTo;
+        if (!user) continue;
+
+        if (!userStats[user]) {
+          userStats[user] = { done: 0, notDone: 0, total: 0 };
+        }
+
+        userStats[user].total += 1;
+
+        const isDone = task.isCompleted === true || task.isCompleted === 'true';
+        if (isDone) {
+          userStats[user].done += 1;
+        } else {
+          userStats[user].notDone += 1;
+        }
+      }
+
+      const users = Object.entries(userStats).filter(([_, stats]) => stats.total > 0);
+      if (!users.length) {
+        return bot.sendMessage(chatId, `Нет активных данных по задачам в отделе "${selectedDepartment.name}".`, adminMainMenu);
+      }
+
+      let message = `📊 Статистика по отделу "${selectedDepartment.name}":\n\n`;
+
+      for (const [user, stats] of users) {
+        const { total, done, notDone } = stats;
+        const donePercent = ((done / total) * 100).toFixed(1);
+        const notDonePercent = ((notDone / total) * 100).toFixed(1);
+
+        message += `👤 @${user}:\n`;
+        message += `Всего задач: ${total}\n`;
+        message += `✅ Выполнено: ${done} (${donePercent}%)\n`;
+        message += `❌ Невыполнено: ${notDone} (${notDonePercent}%)\n\n`;
+      }
+
+      await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+      return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
+    } catch (err) {
+      console.error(err);
+      return bot.sendMessage(chatId, 'Ошибка при получении статистики.');
+    }
+  }
+
+  return bot.sendMessage(chatId, 'Пожалуйста, выберите отдел из списка или нужную опцию.');
+}
+
+// 🔹 Статистика по выбранному администратору
+if (adminState[username]?.mode === 'stats' && adminState[username]?.step === 'awaitingAdminForStats') {
+  const selectedUsername = text.replace('@', '').trim();
+
+  const admin = await User.findOne({ username: selectedUsername, role: 'admin' });
+  if (!admin) {
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Администратор не найден.');
+  }
+
+  try {
+    const tasks = await Task.find({ assignedTo: selectedUsername });
+
+    if (!tasks.length) {
+      adminState[username] = null;
+      return bot.sendMessage(chatId, `У администратора @${selectedUsername} нет задач. 📭`, adminMainMenu);
+    }
+
+    let done = 0, notDone = 0;
+    for (const task of tasks) {
+      Boolean(task.isCompleted) ? done++ : notDone++;
+    }
+
+    const total = done + notDone;
+    const donePercent = ((done / total) * 100).toFixed(1);
+    const notDonePercent = ((notDone / total) * 100).toFixed(1);
+
+    const message = `📊 Статистика администратора @${selectedUsername}:\n\n` +
+                    `Всего задач: ${total}\n` +
+                    `✅ Выполнено: ${done} (${donePercent}%)\n` +
+                    `❌ Невыполнено: ${notDone} (${notDonePercent}%)`;
+
+    adminState[username] = null;
+    await bot.sendMessage(chatId, message);
+    return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
+
+  } catch (error) {
+    console.error(error);
+    adminState[username] = null;
+    return bot.sendMessage(chatId, 'Ошибка при получении статистики.');
+  }
+}
+
 
 // Обработчик команды для удаления просроченных задач
 if (text === '🧹 Удалить просроченные задачи') {
@@ -475,38 +625,30 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
   }
 
-  adminState[username].department = selectedDepartment.name;
+  adminState[username] = null; // Сбросим состояние заранее
 
   try {
-    // Находим все просроченные задачи для выбранного отдела
-    const expiredTasks = await Task.find({
+    // Находим и удаляем просроченные задачи из выбранного отдела
+    const result = await Task.deleteMany({
       department: selectedDepartment.name,
       status: { $in: ['overdue', 'expired'] }
     });
 
-    if (expiredTasks.length === 0) {
-      // Очистка состояния перед возвратом в главное меню
-      adminState[username] = null;
-      return bot.sendMessage(chatId, 'Нет просроченных задач в этом отделе для удаления.', adminMainMenu);
+    if (result.deletedCount === 0) {
+      return bot.sendMessage(chatId, '🧹✅ Нет просроченных задач в этом отделе для удаления.', adminMainMenu);
     }
 
-    // Удаляем все просроченные задачи из выбранного отдела
-    await Task.deleteMany({
-      department: selectedDepartment.name,
-      status: { $in: ['overdue', 'expired'] }
-    });
-
-    // Очистка состояния перед возвратом в главное меню
-    adminState[username] = null;
-
-    // Отправляем сообщение, что задачи были удалены и возвращаем в главное меню
-    return bot.sendMessage(chatId, `Все просроченные задачи из отдела "${selectedDepartment.name}" были удалены.`, adminMainMenu);
+    return bot.sendMessage(
+      chatId,
+      `✅ Удалено ${result.deletedCount} просроченных задач из отдела "${selectedDepartment.name}".`,
+      adminMainMenu
+    );
   } catch (error) {
-    // Очистка состояния при ошибке
-    adminState[username] = null;
-    return bot.sendMessage(chatId, 'Произошла ошибка при удалении просроченных задач. Попробуйте позже.');
+    console.error('Ошибка при удалении задач отдела:', error);
+    return bot.sendMessage(chatId, 'Произошла ошибка при удалении просроченных задач. Попробуйте позже.', adminMainMenu);
   }
 }
+
 
 if (
   adminState[username]?.step === 'awaitingDeleteTarget' &&
@@ -551,71 +693,6 @@ if (
     console.error('Ошибка при удалении задач администраторов:', error);
     adminState[username] = null;
     return bot.sendMessage(chatId, 'Произошла ошибка при удалении задач.', adminMainMenu);
-  }
-}
-
-
-
-
-if (text === '📊 Статистика выполненных заказов') {
-  adminState[username] = { step: 'awaitingDepartmentForStats' };
-  return bot.sendMessage(chatId, 'Выберите отдел для статистики:', {
-    reply_markup: {
-      keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🏠 Главное меню']],
-      resize_keyboard: true
-    }
-  });
-}
-
-if (adminState[username]?.step === 'awaitingDepartmentForStats') {
-  const selectedDepartment = departmentList.find(d => `${d.emoji} ${d.name}` === text);
-  if (!selectedDepartment) {
-    return bot.sendMessage(chatId, 'Выберите корректный отдел.');
-  }
-
-  adminState[username] = null;
-
-  try {
-    const [completedTasks, pendingTasks] = await Promise.all([
-      Task.find({ department: selectedDepartment.name, isCompleted: true }),
-      Task.find({ department: selectedDepartment.name, isCompleted: false })
-    ]);
-
-    const userStats = {};
-
-    // Считаем выполненные
-    for (const task of completedTasks) {
-      const user = task.assignedTo;
-      if (!user) continue;
-      if (!userStats[user]) userStats[user] = { done: 0, notDone: 0 };
-      userStats[user].done += 1;
-    }
-
-    // Считаем невыполненные
-    for (const task of pendingTasks) {
-      const user = task.assignedTo;
-      if (!user) continue;
-      if (!userStats[user]) userStats[user] = { done: 0, notDone: 0 };
-      userStats[user].notDone += 1;
-    }
-
-    if (Object.keys(userStats).length === 0) {
-      return bot.sendMessage(chatId, 'Нет данных по задачам в этом отделе.', adminMainMenu);
-    }
-
-    let message = `📊 Статистика по отделу "${selectedDepartment.name}":\n\n`;
-
-    for (const [user, stats] of Object.entries(userStats)) {
-      message += `👤 @${user}:\n✅ Выполнено: ${stats.done}\n❌ Невыполнено: ${stats.notDone}\n\n`;
-    }
-
-    await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
-    return bot.sendMessage(chatId, 'Возвращаемся в главное меню...', adminMainMenu);
-
-
-  } catch (error) {
-    console.error(error);
-    return bot.sendMessage(chatId, 'Произошла ошибка при получении статистики.');
   }
 }
 
