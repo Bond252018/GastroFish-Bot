@@ -13,6 +13,7 @@ const {
 const {
   handleUserCommands
 } = require('./userCommands');  
+const { handleAddUserFlow } = require('./addUserFlow');
 
 
 async function handleAdminCommands(msg, text, username, adminIds) {
@@ -56,6 +57,14 @@ async function handleAdminCommands(msg, text, username, adminIds) {
     if (text === '📥 Добавить пользователя') {
       adminState[username] = { step: 'awaitingUsername' };
       return bot.sendMessage(chatId, 'Введите username нового пользователя (в формате @username).');
+    }
+
+    if (adminState[username]) {
+      const result = await handleAddUserFlow(bot, msg, adminState);
+
+      if (result?.success) {
+        await bot.sendMessage(chatId, 'Возвращаемся в главное меню.', adminMainMenu); 
+      }
     }
 
     if (text === '❌ Удалить пользователя') {
@@ -586,7 +595,6 @@ if (adminState[username]?.mode === 'stats' && adminState[username]?.step === 'aw
   }
 }
 
-
 // Обработчик команды для удаления просроченных задач
 if (text === '🧹 Удалить просроченные задачи') {
   adminState[username] = { step: 'awaitingDeleteTarget' };
@@ -615,7 +623,6 @@ if (
     }
   });
 }
-
 
 // Шаг 2: Фильтрация по выбранному отделу для удаления просроченных задач
 if (adminState[username] && adminState[username].step === 'awaitingDepartmentForDelete') {
@@ -648,7 +655,6 @@ if (adminState[username] && adminState[username].step === 'awaitingDepartmentFor
     return bot.sendMessage(chatId, 'Произошла ошибка при удалении просроченных задач. Попробуйте позже.', adminMainMenu);
   }
 }
-
 
 if (
   adminState[username]?.step === 'awaitingDeleteTarget' &&
@@ -700,51 +706,15 @@ if (
       const state = adminState[username];
 
       switch (state.step) {
-        case 'awaitingUsername':
-          const usernameInput = text.trim().replace('@', '');
-          if (!isValidUsername(text)) {
-            return bot.sendMessage(chatId, 'Введите корректный username (например, @ivan_petrov).');
-          }
-
-          try {
-            const existingUser = await User.findOne({ username: usernameInput });
-            if (existingUser) return bot.sendMessage(chatId, `Пользователь @${usernameInput} уже существует.`);
-
-            const newUser = new User({ username: usernameInput, department: 'не назначено' });
-            await newUser.save();
-
-            adminState[username] = { step: 'awaitingDepartmentForNewUserByUsername', username: usernameInput };
-            bot.sendMessage(chatId, `Пользователь @${usernameInput} успешно добавлен.`);
-            return bot.sendMessage(chatId, 'Выберите подразделение для нового пользователя:', {
-              reply_markup: { keyboard: [...departmentList.map(d => [`${d.emoji} ${d.name}`]), ['🏠 Главное меню']], resize_keyboard: true }
-            });
-          } catch (error) {
-            return bot.sendMessage(chatId, `Произошла ошибка: ${error.message}`);
-          }     
-
-        case 'awaitingDepartmentForNewUserByUsername':
-          const dept = departmentList.find(d => `${d.emoji} ${d.name}` === text);
-          if (!dept) return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
-
-          const userToUpdate = await User.findOne({ username: adminState[username].username });
-          if (!userToUpdate) return bot.sendMessage(chatId, `Пользователь @${adminState[username].username} не найден.`);
-
-          userToUpdate.department = dept.name;
-          await userToUpdate.save();
-
-          delete adminState[username];
-          bot.sendMessage(chatId, `Пользователь @${userToUpdate.username} назначен в подразделение "${dept.name}".`);
-          return bot.sendMessage(chatId, 'Возвращаемся в главное меню.', adminMainMenu);
-
           case 'awaitingDeleteUsername':
           const delUsername = text.trim().replace('@', '');
 
           // Проверка на корректность введённого username
           if (!isValidUsername(text)) {
-            return bot.sendMessage(chatId, 'Введите корректный username (например, @ivan_petrov).');
+            return bot.sendMessage(chatId, 'Введите корректный username (например, @halyna_sichova).');
           }
 
-          if (!delUsername) return bot.sendMessage(chatId, 'Введите корректный username (например, @ivan_petrov).');
+          if (!delUsername) return bot.sendMessage(chatId, 'Введите корректный username (например, @halyna_sichova).');
 
           try {
             const userToDelete = await User.findOne({ username: delUsername });
@@ -758,7 +728,7 @@ if (
             return bot.sendMessage(chatId, 'Произошла ошибка при удалении пользователя. Попробуйте снова.');
           }
 
-        case 'awaitingDepartment':
+          case 'awaitingDepartment':
           const selected = departmentList.find(d => `${d.emoji} ${d.name}` === text);
           if (!selected) return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
 
@@ -770,7 +740,7 @@ if (
             }
           });
 
-        case 'awaitingTargetAudience':
+          case 'awaitingTargetAudience':
           if (text === '📢 Всем сотрудникам отдела') {
             adminState[username].target = 'all';
             adminState[username].step = 'awaitingTaskTitle';

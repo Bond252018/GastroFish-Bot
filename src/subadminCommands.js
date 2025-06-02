@@ -15,6 +15,8 @@ const {
   handleUserCommands
 } = require('./userCommands');  
 
+const { handleAddUserFlow } = require('./addUserFlow');
+
 const { notifySubadminOnTaskCompletion } = require('./notifications'); 
 
 async function handleSubadminCommands(msg, text, username) {
@@ -144,8 +146,22 @@ if (adminState[username]?.step === 'awaitingAdmin') {
   return bot.sendMessage(chatId, `Введите название задачи для администратора @${targetAdmin.username}:`);
 }
 
+if (text === '📥 Добавить пользователя') {
+  adminState[username] = { step: 'awaitingUsername', role: 'subadmin' };
+  return bot.sendMessage(chatId, 'Введите username нового пользователя (в формате @username).');
+}
+
 if (adminState[username]) {
-    const state = adminState[username];
+  const state = adminState[username];
+
+  // Пробуем обработать добавление пользователя
+  const result = await handleAddUserFlow(bot, msg, adminState);
+
+  // Если это была логика добавления — и она завершилась
+  if (result?.success && state.step === 'awaitingDepartmentForNewUserByUsername') {
+    await bot.sendMessage(chatId, 'Возвращаемся в главное меню субадминистратора.', subadminMenu);
+    return;
+  }
 
     switch (state.step) {
       case 'awaitingDepartmentSelection':
@@ -251,8 +267,9 @@ if (adminState[username]) {
         await awaitingManualTimeInput(msg, bot, chatId, adminState, username, text);
         break;
     }
+     return;
   }
-    await handleUserCommands(msg, text, username);
+  await handleUserCommands(msg, text, username);
 }
 
 // Завершение задачи
