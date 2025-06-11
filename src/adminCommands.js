@@ -1,4 +1,4 @@
-const { isValidUsername, escapeHTML, departmentList, adminState, bot, Document, User, Task, adminMainMenu } = require('./utils');
+const { adminState, bot, isValidUsername, escapeHTML, getKeyboard, departmentList, adminMainMenu, Document, User, Task } = require('./utils');
 const { adminIds } = require('../constants/constants');
  
 const {
@@ -81,32 +81,35 @@ async function handleAdminCommands(msg, text, username, adminIds) {
       adminState[username].step = 'awaitingTarget';
     }
 
-    return bot.sendMessage(chatId, 'Кому поставить задачу?', {
-      reply_markup: {
-        keyboard: [
-          ['📋 Подразделению', '👤 Администратору'],
-          ['🏠 Главное меню']
-        ],
-        resize_keyboard: true
-      }
-    });
+   return bot.sendMessage(chatId, 'Кому поставить задачу?', getKeyboard({
+      buttonsRows: [['📋 Подразделению', '👤 Администратору']],
+      includeHome: true
+    }));
   }
+  
 
   // 📋 Подразделению
     if (adminState[username]?.step === 'awaitingTarget' && text === '📋 Подразделению') {
     adminState[username].step = 'awaitingDepartment';
 
-    return bot.sendMessage(chatId, 'Выберите отдел:', {
-      reply_markup: {
-        keyboard: [
-          ...departmentList.map(d => [`${d.emoji} ${d.name}`]),
-          ['🏠 Главное меню']
-        ],
-        resize_keyboard: true
-      }
-    });
-  }
-    if (adminState[username]?.step === 'awaitingTarget') {
+     return bot.sendMessage(chatId, 'Выберите отдел:', getKeyboard({
+    buttonsRows: departmentList.map(d => [`${d.emoji} ${d.name}`]),
+    includeBack: true,
+    includeHome: true
+  }));
+}
+// Обработка кнопки "Назад" в выборе отдела
+if (adminState[username]?.step === 'awaitingDepartment' && text === '🔙 Назад') {
+  adminState[username].step = 'awaitingTarget';
+
+  return bot.sendMessage(chatId, 'Кому поставить задачу?', getKeyboard({
+    buttonsRows: [['📋 Подразделению', '👤 Администратору']],
+    includeHome: true
+  }));
+}
+
+// 🧍 Администратору
+if (adminState[username]?.step === 'awaitingTarget') {
   if (text === '👤 Администратору') {
     const currentId = msg.from.id.toString();
 
@@ -122,18 +125,23 @@ async function handleAdminCommands(msg, text, username, adminIds) {
 
     adminState[username].step = 'awaitingAdmin';
 
-    return bot.sendMessage(chatId, 'Выберите администратора:', {
-      reply_markup: {
-        keyboard: [
-          ...otherAdmins.map(admin => [`@${admin.username}`]),
-          ['🏠 Главное меню']
-        ],
-        resize_keyboard: true
-      }
-    });
+  return bot.sendMessage(chatId, 'Выберите администратора:', getKeyboard({
+      buttonsRows: otherAdmins.map(admin => [`@${admin.username}`]),
+      includeBack: true,
+      includeHome: true
+    }));
   }
-  }
-    if (adminState[username]?.step === 'awaitingAdmin') {
+}
+ // Обработка кнопки "Назад" в выборе администратора
+if (adminState[username]?.step === 'awaitingAdmin' && text === '🔙 Назад') {
+  adminState[username].step = 'awaitingTarget';
+
+  return bot.sendMessage(chatId, 'Кому поставить задачу?', getKeyboard({
+    buttonsRows: [['📋 Подразделению', '👤 Администратору']],
+    includeHome: true
+  }));
+}
+if (adminState[username]?.step === 'awaitingAdmin') {
     const targetUsername = text.replace('@', '').trim();
 
   const targetAdmin = await User.findOne({
@@ -152,7 +160,7 @@ async function handleAdminCommands(msg, text, username, adminIds) {
   adminState[username].step = 'awaitingTaskTitle';
 
   return bot.sendMessage(chatId, `Введите название задачи для администратора @${targetAdmin.username}:`);
-  }
+}
     if (text === '👑 Назначить субадмина') {
       adminState[username] = { step: 'awaitingSubadminUsername' };
       return bot.sendMessage(chatId, 'Введите username пользователя, которого нужно назначить субадмином (в формате @username).');
@@ -733,19 +741,52 @@ if (
           if (!selected) return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
 
           adminState[username] = { step: 'awaitingTargetAudience', department: selected.name };
-          return bot.sendMessage(chatId, 'Кому назначить задачу?', {
-            reply_markup: {
-              keyboard: [['📢 Всем сотрудникам отдела'], ['👤 Определённому пользователю'], ['🏠 Главное меню']],
-              resize_keyboard: true
-            }
-          });
+          return bot.sendMessage(chatId, 'Кому назначить задачу?', getKeyboard({
+            buttonsRows: [
+              ['📢 Всем сотрудникам отдела'],
+              ['👤 Определённому пользователю']
+            ],
+            includeBack: true,
+            includeHome: true
+          }));
 
           case 'awaitingTargetAudience':
+           if (text === '🔙 Назад') {
+            adminState[username].step = 'awaitingDepartment';
+
+              return bot.sendMessage(chatId, 'Выберите отдел:', getKeyboard({
+              buttonsRows: departmentList.map(d => [`${d.emoji} ${d.name}`]),
+              includeBack: true,
+              includeHome: true
+            }));
+          }
           if (text === '📢 Всем сотрудникам отдела') {
+            const department = adminState[username]?.department;
+
+            if (!department) {
+              return bot.sendMessage(chatId, 'Выберите департамент.');
+            }
+
+            // Ищем пользователей, которые либо в выбранном департаменте, либо являются субадминами этого департамента
+            const users = await User.find({
+              $or: [
+                { department: department },
+                { subadminDepartments: department }
+              ]
+            });
+
+            if (!users.length) {
+              return bot.sendMessage(chatId, 'В выбранном департаменте нет пользователей.');
+            }
+
             adminState[username].target = 'all';
             adminState[username].step = 'awaitingTaskTitle';
-            return bot.sendMessage(chatId, 'Введите название задачи.');
-          }
+            return bot.sendMessage(chatId, 'Введите название задачи.', getKeyboard({
+            buttonsRows: [], // никаких дополнительных кнопок
+            includeBack: true,
+            includeHome: true
+          }));
+        }
 
           if (text === '👤 Определённому пользователю') {
             const department = adminState[username]?.department;
@@ -771,7 +812,7 @@ if (
 
             // Создаем кнопки для всех найденных пользователей
             const buttons = users.map(u => [`@${u.username}`]);
-            buttons.push(['🏠 Главное меню']);
+            buttons.push(['🔙 Назад' , '🏠 Главное меню']);
 
             return bot.sendMessage(chatId, 'Выберите пользователя:', {
               reply_markup: { keyboard: buttons, resize_keyboard: true }
@@ -781,6 +822,17 @@ if (
           return bot.sendMessage(chatId, 'Выберите один из предложенных вариантов.');
 
           case 'awaitingTargetUsername':
+            if (text === '🔙 Назад') {
+              adminState[username].step = 'awaitingTargetAudience';
+              return bot.sendMessage(chatId, 'Кому назначить задачу?', getKeyboard({
+                buttonsRows: [
+                  ['📢 Всем сотрудникам отдела'],
+                  ['👤 Определённому пользователю']
+                ],
+                includeBack: true,
+                includeHome: true
+              }));
+            } 
             const targetUsername = text.trim().replace('@', '');
             const exists = await User.findOne({ username: targetUsername });
             if (!exists) return bot.sendMessage(chatId, `Пользователь @${targetUsername} не найден.`);
@@ -789,35 +841,21 @@ if (
             adminState[username].step = 'awaitingTaskTitle';
             return bot.sendMessage(chatId, 'Введите название задачи.');
           
-
           case 'awaitingTaskTitle':
+            if (text === '🔙 Назад') {
+              adminState[username].step = 'awaitingTargetAudience';
+              return bot.sendMessage(chatId, 'Кому назначить задачу?', getKeyboard({
+                buttonsRows: [
+                  ['📢 Всем сотрудникам отдела'],
+                  ['👤 Определённому пользователю']
+                ],
+                includeBack: true,
+                includeHome: true
+              }));
+            }
             adminState[username].title = text;
             adminState[username].step = 'awaitingTaskDescription';
             return bot.sendMessage(chatId, 'Введите описание задачи.');
-
-          case 'awaitingTaskDescription':
-            await awaitingTaskDescription(bot, chatId, adminState, username, text);
-            break;
-
-          case 'awaitingTaskPhoto':
-            await awaitingTaskPhoto(bot, chatId, adminState, username, text);
-            break;
-
-          case 'awaitingDeadlineDate':
-            await awaitingDeadlineDate(bot, chatId, adminState, username, text);
-            break;
-
-          case 'awaitingManualDateInput':
-            await awaitingManualDateInput(bot, chatId, adminState, username, text);
-            break;
-
-          case 'awaitingDeadlineTime':
-            await awaitingDeadlineTime(msg, bot, chatId, adminState, username, text);
-            break;
-
-          case 'awaitingManualTimeInput':
-            await awaitingManualTimeInput(msg, bot, chatId, adminState, username, text);
-            break; 
       }
     }
      await handleUserCommands(msg, text, username);

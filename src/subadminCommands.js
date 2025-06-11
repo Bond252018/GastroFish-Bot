@@ -1,4 +1,4 @@
-const { bot, adminState, subadminMenu, departmentList } = require('./utils');
+const { bot, getKeyboard, adminState, subadminMenu, departmentList } = require('./utils');
 const User = require('../models/userDB');
 const Task = require('../models/taskDB');
 
@@ -61,73 +61,74 @@ async function handleSubadminCommands(msg, text, username) {
   }
 }
 
- // Обработка кнопки "📝 Поставить задачу"
+// Обработка кнопки "📝 Поставить задачу"
 if (text === '📝 Поставить задачу') {
   adminState[username] = {
     step: 'awaitingTarget',
-    subadminDepartments,
-    role: 'subadmin'
+    role: 'subadmin',
   };
 
-  return bot.sendMessage(chatId, 'Кому поставить задачу?', {
-    reply_markup: {
-      keyboard: [
-        ['📋 Подразделению', '👤 Администратору'],
-        ['🏠 Главное меню']
-      ],
-      resize_keyboard: true
-    }
-  });
-}
-
-// 👉 Подразделению
-if (adminState[username]?.step === 'awaitingTarget' && text === '📋 Подразделению') {
-  const state = adminState[username];
-  state.step = 'awaitingDepartmentSelection';
-
-  const departmentButtons = state.subadminDepartments.map(dep => {
-    const department = departmentList.find(d => d.name === dep);
-    return [`${department.emoji} ${department.name}`];
-  });
-
-  departmentButtons.push(['🏠 Главное меню']);
-
-  return bot.sendMessage(chatId, 'Выберите подразделение:', {
-    reply_markup: {
-      keyboard: departmentButtons,
-      resize_keyboard: true
-    }
-  });
-}
-
-// 👉 Администратору
-if (adminState[username]?.step === 'awaitingTarget' && text === '👤 Администратору') {
-  const currentId = msg.from.id.toString();
-
-  const otherAdmins = await User.find({
-    role: 'admin'
-  });
-
-  if (!otherAdmins.length) {
-    return bot.sendMessage(chatId, 'Нет доступных администраторов.');
+  return bot.sendMessage(chatId, 'Кому поставить задачу?', getKeyboard({
+      buttonsRows: [['📋 Подразделению', '👤 Администратору']],
+      includeHome: true
+    }));
   }
 
-  adminState[username].step = 'awaitingAdmin';
+  // 📋 Подразделению
+    if (adminState[username]?.step === 'awaitingTarget' && text === '📋 Подразделению') {
+    adminState[username].step = 'awaitingDepartment';
 
-  return bot.sendMessage(chatId, 'Выберите администратора:', {
-    reply_markup: {
-      keyboard: [
-        ...otherAdmins.map(admin => [`@${admin.username}`]),
-        ['🏠 Главное меню']
-      ],
-      resize_keyboard: true
-    }
-  });
+     return bot.sendMessage(chatId, 'Выберите отдел:', getKeyboard({
+    buttonsRows: departmentList.map(d => [`${d.emoji} ${d.name}`]),
+    includeBack: true,
+    includeHome: true
+  }));
+}
+// Обработка кнопки "Назад" в выборе отдела
+if (adminState[username]?.step === 'awaitingDepartment' && text === '🔙 Назад') {
+  adminState[username].step = 'awaitingTarget';
+
+  return bot.sendMessage(chatId, 'Кому поставить задачу?', getKeyboard({
+    buttonsRows: [['📋 Подразделению', '👤 Администратору']],
+    includeHome: true
+  }));
 }
 
-// 🧍 Обработка выбранного администратора
+// 🧍 Администратору
+if (adminState[username]?.step === 'awaitingTarget') {
+  if (text === '👤 Администратору') {
+    const currentId = msg.from.id.toString();
+
+    // Загружаем всех других админов из базы
+    const otherAdmins = await User.find({
+      role: 'admin',
+      telegramId: { $ne: currentId }
+    });
+
+    if (!otherAdmins.length) {
+      return bot.sendMessage(chatId, 'Нет других администраторов.');
+    }
+
+    adminState[username].step = 'awaitingAdmin';
+
+  return bot.sendMessage(chatId, 'Выберите администратора:', getKeyboard({
+      buttonsRows: otherAdmins.map(admin => [`@${admin.username}`]),
+      includeBack: true,
+      includeHome: true
+    }));
+  }
+}
+ // Обработка кнопки "Назад" в выборе администратора
+if (adminState[username]?.step === 'awaitingAdmin' && text === '🔙 Назад') {
+  adminState[username].step = 'awaitingTarget';
+
+  return bot.sendMessage(chatId, 'Кому поставить задачу?', getKeyboard({
+    buttonsRows: [['📋 Подразделению', '👤 Администратору']],
+    includeHome: true
+  }));
+}
 if (adminState[username]?.step === 'awaitingAdmin') {
-  const targetUsername = text.replace('@', '').trim();
+    const targetUsername = text.replace('@', '').trim();
 
   const targetAdmin = await User.findOne({
     username: targetUsername,
@@ -138,6 +139,7 @@ if (adminState[username]?.step === 'awaitingAdmin') {
     return bot.sendMessage(chatId, 'Администратор не найден.');
   }
 
+  // Устанавливаем те же поля, что и при выборе обычного пользователя
   adminState[username].target = 'admin';
   adminState[username].targetUsername = targetAdmin.username;
   adminState[username].targetTelegramId = targetAdmin.telegramId;
@@ -164,113 +166,119 @@ if (adminState[username]) {
   }
 
     switch (state.step) {
-      case 'awaitingDepartmentSelection':
-        const departmentEntry = departmentList.find(dep => `${dep.emoji} ${dep.name}` === text);
+     case 'awaitingDepartment':
+            case 'awaitingDepartment':
+          const selected = departmentList.find(d => `${d.emoji} ${d.name}` === text);
+          if (!selected) return bot.sendMessage(chatId, 'Выберите корректное подразделение.');
 
-        if (!departmentEntry || !subadminDepartments.includes(departmentEntry.name)) {
-          return bot.sendMessage(chatId, 'Выберите подразделение из списка.');
-        }
-        
-        state.selectedDepartment = departmentEntry.name;        
-    
-        state.step = 'awaitingTargetAudience'; // Переходим к следующему шагу выбора аудитории
+          adminState[username] = { step: 'awaitingTargetAudience', department: selected.name };
+          return bot.sendMessage(chatId, 'Кому назначить задачу?', getKeyboard({
+              buttonsRows: [
+                ['📢 Всем сотрудникам отдела'],
+                ['👤 Определённому пользователю']
+              ],
+              includeBack: true,
+              includeHome: true
+            }));
 
-        // Запрашиваем, кому поставить задачу
-        return bot.sendMessage(chatId, 'Кому поставить задачу?', {
-          reply_markup: {
-            keyboard: [['📢 Всем сотрудникам отдела'], ['👤 Определённому пользователю'], ['🏠 Главное меню']],
-            resize_keyboard: true
+          case 'awaitingTargetAudience':
+              if (text === '🔙 Назад') {
+            adminState[username].step = 'awaitingDepartment';
+
+              return bot.sendMessage(chatId, 'Выберите отдел:', getKeyboard({
+              buttonsRows: departmentList.map(d => [`${d.emoji} ${d.name}`]),
+              includeBack: true,
+              includeHome: true
+            }));
           }
-        });
+          if (text === '📢 Всем сотрудникам отдела') {
+            adminState[username].target = 'all';
+            adminState[username].step = 'awaitingTaskTitle';
+            return bot.sendMessage(chatId, 'Введите название задачи.', getKeyboard({
+            buttonsRows: [], // никаких дополнительных кнопок
+            includeBack: true,
+            includeHome: true
+          }));
+        }
 
-      case 'awaitingTargetAudience':
-        if (text === '📢 Всем сотрудникам отдела') {
-          // Получаем всех сотрудников отдела, исключая текущего субадмина
-          const users = await User.find({
-            department: state.selectedDepartment,
-            role: 'user',
-            username: { $ne: username }  // Исключаем по username
-          });
+          if (text === '👤 Определённому пользователю') {
+            const department = adminState[username]?.department;
 
-          if (!users.length) {
-            return bot.sendMessage(chatId, 'В отделе нет других сотрудников, кроме вас.', subadminMenu);
+            if (!department) {
+              return bot.sendMessage(chatId, 'Выберите департамент.');
+            }
+
+              // Ищем пользователей и субадминов в выбранном департаменте, исключая самого субадмина
+    const users = await User.find({
+      $and: [
+        {
+          $or: [
+            { department: department },
+            { subadminDepartments: department }
+          ]
+        },
+        { username: { $ne: username } }  // исключаем самого себя
+      ],
+      role: { $in: ['user', 'subadmin'] } // учитываем роли (если нужно)
+    });
+
+            if (!users.length) {
+              return bot.sendMessage(chatId, 'В выбранном департаменте нет пользователей.');
+            }
+
+            adminState[username].target = 'user';
+            adminState[username].step = 'awaitingTargetUsername';
+
+            // Создаем кнопки для всех найденных пользователей
+            const buttons = users.map(u => [`@${u.username}`]);
+            buttons.push(['🔙 Назад' , '🏠 Главное меню']);
+
+            return bot.sendMessage(chatId, 'Выберите пользователя:', {
+              reply_markup: { keyboard: buttons, resize_keyboard: true }
+            });
           }
 
-          state.target = 'all';
-          state.recipients = users.map(u => u.telegramId);  // Сохраняем получателей
-          state.step = 'awaitingTaskTitle';
+          return bot.sendMessage(chatId, 'Выберите один из предложенных вариантов.');
 
-          return bot.sendMessage(chatId, 'Введите название задачи.');
+          case 'awaitingTargetUsername':
+            if (text === '🔙 Назад') {
+              adminState[username].step = 'awaitingTargetAudience';
+              return bot.sendMessage(chatId, 'Кому назначить задачу?', getKeyboard({
+                buttonsRows: [
+                  ['📢 Всем сотрудникам отдела'],
+                  ['👤 Определённому пользователю']
+                ],
+                includeBack: true,
+                includeHome: true
+              }));
+            } 
+            const targetUsername = text.trim().replace('@', '');
+            const exists = await User.findOne({ username: targetUsername });
+            if (!exists) return bot.sendMessage(chatId, `Пользователь @${targetUsername} не найден.`);
+          
+            adminState[username].targetUsername = targetUsername;
+            adminState[username].step = 'awaitingTaskTitle';
+            return bot.sendMessage(chatId, 'Введите название задачи.');
+          
+          case 'awaitingTaskTitle':
+            if (text === '🔙 Назад') {
+              adminState[username].step = 'awaitingTargetAudience';
+              return bot.sendMessage(chatId, 'Кому назначить задачу?', getKeyboard({
+                buttonsRows: [
+                  ['📢 Всем сотрудникам отдела'],
+                  ['👤 Определённому пользователю']
+                ],
+                includeBack: true,
+                includeHome: true
+              }));
+            }
+            adminState[username].title = text;
+            adminState[username].step = 'awaitingTaskDescription';
+            return bot.sendMessage(chatId, 'Введите описание задачи.');
         }
-
-        if (text === '👤 Определённому пользователю') {
-          // Получаем список пользователей выбранного подразделения
-          const users = await User.find({ department: state.selectedDepartment, role: 'user' });
-
-          if (!users.length) {
-            return bot.sendMessage(chatId, 'В выбранном отделе нет сотрудников.', subadminMenu);
-          }
-
-          const buttons = users.map(u => [`@${u.username}`]);
-          buttons.push(['🏠 Главное меню']);
-
-          state.target = 'user';  // Задача будет поставлена конкретному пользователю
-          state.step = 'awaitingTargetUsername';
-
-          return bot.sendMessage(chatId, 'Выберите пользователя:', {
-            reply_markup: { keyboard: buttons, resize_keyboard: true }
-          });
-        }
-        break;
-    
-      case 'awaitingTargetUsername':
-        const targetUsername = text.startsWith('@') ? text.slice(1) : text;  // Извлекаем username пользователя
-        const selectedUser = await User.findOne({ username: targetUsername });
-  
-        if (!selectedUser || selectedUser.department !== state.selectedDepartment) {
-          return bot.sendMessage(chatId, 'Пользователь не найден в выбранном подразделении. Выберите другого.', {
-            reply_markup: { keyboard: [['🏠 Главное меню']], resize_keyboard: true }
-          });
-        }
-  
-        // Записываем пользователя, которому будет поставлена задача
-        state.targetUsername = selectedUser.username;
-        state.step = 'awaitingTaskTitle';
-        return bot.sendMessage(chatId, 'Введите название задачи.');
-  
-      case 'awaitingTaskTitle':
-        state.title = text;  // Сохраняем название задачи
-        state.step = 'awaitingTaskDescription';
-        return bot.sendMessage(chatId, 'Введите описание задачи.');
-  
-      case 'awaitingTaskDescription':
-        await awaitingTaskDescription(bot, chatId, adminState, username, text);
-        break;
-
-      case 'awaitingTaskPhoto':
-        await awaitingTaskPhoto(bot, chatId, adminState, username, text);
-        break;
-
-      case 'awaitingDeadlineDate':
-        await awaitingDeadlineDate(bot, chatId, adminState, username, text);
-        break;
-
-      case 'awaitingManualDateInput':
-        await awaitingManualDateInput(bot, chatId, adminState, username, text);
-        break;
-
-      case 'awaitingDeadlineTime':
-        await awaitingDeadlineTime(msg, bot, chatId, adminState, username, text);
-        break;
-
-      case 'awaitingManualTimeInput':
-        await awaitingManualTimeInput(msg, bot, chatId, adminState, username, text);
-        break;
+      }
+      await handleUserCommands(msg, text, username);
     }
-     return;
-  }
-  await handleUserCommands(msg, text, username);
-}
 
 // Завершение задачи
 async function completeTask(taskId) {

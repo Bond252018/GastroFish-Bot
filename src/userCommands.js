@@ -1,8 +1,17 @@
 require('dotenv').config();  // Загружаем переменные из .env
 
 const { notifyCreatorOnTaskCompletion } = require('./notifications'); 
-const { bot, formatDateTimeRu, escapeMarkdownV2, User, Task } = require('./utils');
+const { bot, adminState, formatDateTimeRu, escapeMarkdownV2, getKeyboard, userMenu, departmentList, User, Task } = require('./utils');
 const { adminIds } = require('../constants/constants');
+
+const {
+  awaitingTaskDescription,
+  awaitingTaskPhoto,
+  awaitingDeadlineDate,
+  awaitingManualDateInput,
+  awaitingDeadlineTime,
+  awaitingManualTimeInput,
+} = require('./deadlineHandler');
 
 // Функция для отправки сообщений с кнопками
 async function sendTasksMessage(chatId, tasks) {
@@ -343,6 +352,209 @@ async function handleUserCommands(msg, text, username) {
     console.error('❌ Ошибка при обработке задач:', error);
     await bot.sendMessage(chatId, 'Произошла ошибка при обработке вашего запроса.');
   }
+    await handleTaskCreationOnly(msg, text, username); 
+}
+
+// Обработчик только для "📝 Поставить задачу"
+async function handleTaskCreationOnly(msg, text, username) {
+  const chatId = msg.chat.id;
+
+  // Проверяем, что это НЕ админ (админы обрабатываются в другом месте)
+  if (!adminIds.includes(msg.from.id)) {
+
+    const state = adminState[username];
+
+    // Обработка главного меню
+    if (text === '🏠 Главное меню') {
+      delete adminState[username];
+      return bot.sendMessage(chatId, 'Главное меню пользователя:', userMenu);
+    }
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return bot.sendMessage(chatId, '❌ Не удалось найти информацию о вашем пользователе.');
+    }
+
+    // Проверка: пользователь уже в процессе постановки задачи
+    if (adminState[username]) {
+      return handleTaskSteps(msg, text, username);
+    }
+
+if (text === '📝 Поставить задачу') {
+  if (user.role !== 'user') return;
+
+  const departmentsFromDB = await User.distinct('subadminDepartments', { role: 'subadmin' });
+
+  if (!departmentsFromDB.length) {
+    return bot.sendMessage(chatId, '❌ Нет доступных департаментов.');
+  }
+
+  const availableDepartments = departmentList.filter(dep => departmentsFromDB.includes(dep.name));
+  const buttons = availableDepartments.map(dep => [`${dep.emoji} ${dep.name}`]);
+  buttons.push(['🏠 Главное меню']);
+
+  // 👉 Устанавливаем состояние пользователя
+  adminState[username] = {
+    step: 'awaitingDepartmentForTask'
+  };
+
+  return bot.sendMessage(chatId, 'Выберите отдел:', {
+    reply_markup: {
+      keyboard: buttons,
+      resize_keyboard: true
+    }
+  });
+}
+
+  } catch (error) {
+    console.error('❌ Ошибка при постановке задачи:', error);
+    await bot.sendMessage(chatId, 'Произошла ошибка при обработке запроса.');
+  }
+}
+
+async function handleTaskSteps(msg, text, username) {
+  const chatId = msg.chat.id;
+  const state = adminState[username];
+  if (!state) return;
+
+  switch (state.step) {
+    case 'awaitingDepartmentForTask': {
+  // 🔍 Ищем департамент по полному совпадению кнопки
+  const matchedDep = departmentList.find(dep => text === `${dep.emoji} ${dep.name}`);
+
+  if (!matchedDep) {
+    return bot.sendMessage(chatId, '❌ Пожалуйста, выберите отдел из списка.');
+  }
+
+  const selectedDepartment = matchedDep.name;
+
+  const subadmins = await User.find({
+    role: 'subadmin',
+    subadminDepartments: selectedDepartment
+  });
+
+  if (!subadmins.length) {
+    return bot.sendMessage(chatId, '❌ В этом департаменте нет субадминов.');
+  }
+
+  state.department = selectedDepartment;
+  state.step = 'awaitingTargetSubadmin';
+  state.availableTargets = subadmins.map(u => u.username);
+
+  const buttons = subadmins.map(u => [u.username]);
+  buttons.push(['🔙 Назад' , '🏠 Главное меню']);
+
+  return bot.sendMessage(chatId, `Выберите субадмина из отдела ${selectedDepartment}:`, {
+    reply_markup: {
+      keyboard: buttons,
+      resize_keyboard: true
+    }
+  });
+}
+   case 'awaitingTargetSubadmin': {
+  if (text === '🔙 Назад') {
+    const departmentsFromDB = await User.distinct('subadminDepartments', { role: 'subadmin' });
+    const availableDepartments = departmentList.filter(dep => departmentsFromDB.includes(dep.name));
+    const buttons = availableDepartments.map(dep => [`${dep.emoji} ${dep.name}`]);
+
+    adminState[username].step = 'awaitingDepartmentForTask';
+
+    return bot.sendMessage(chatId, 'Выберите отдел:', getKeyboard({
+      buttonsRows: buttons,
+      includeBack: false,
+      includeHome: true
+    }));
+  }
+
+  const selectedUser = await User.findOne({ username: text });
+  if (!selectedUser || selectedUser.role !== 'subadmin') {
+    return bot.sendMessage(chatId, '❌ Выберите субадмина из предложенного списка.');
+  }
+
+  adminState[username].targetUsername = selectedUser.username;
+  adminState[username].step = 'awaitingTaskTitle';
+
+  return bot.sendMessage(chatId, 'Введите название задачи.', getKeyboard({
+    buttonsRows: [],
+    includeBack: true,
+    includeHome: true
+  }));
+}
+   case 'awaitingTaskTitle': {
+  if (text === '🔙 Назад') {
+    // Возврат на выбор субадмина
+    const selectedDepartment = state.department;
+    const subadmins = await User.find({
+      role: 'subadmin',
+      subadminDepartments: selectedDepartment
+    });
+
+    if (!subadmins.length) {
+      return bot.sendMessage(chatId, '❌ В этом департаменте нет субадминов.');
+    }
+
+    state.step = 'awaitingTargetSubadmin';
+    state.availableTargets = subadmins.map(u => u.username);
+
+    const buttons = subadmins.map(u => [u.username]);
+    buttons.push(['🔙 Назад', '🏠 Главное меню']);
+
+    return bot.sendMessage(chatId, `Выберите субадмина из отдела ${selectedDepartment}:`, {
+      reply_markup: {
+        keyboard: buttons,
+        resize_keyboard: true
+      }
+    });
+  }
+
+  // Если не «Назад», сохраняем название задачи и переходим к описанию
+  state.title = text;
+  state.step = 'awaitingTaskDescription';
+
+  return bot.sendMessage(chatId, 'Введите описание задачи.', getKeyboard({
+    buttonsRows: [],
+    includeBack: true,
+    includeHome: true
+  }));
+}
+
+    case 'awaitingTaskDescription': {
+      if (text === '🔙 Назад') {
+        state.step = 'awaitingTaskTitle';
+        return bot.sendMessage(chatId, 'Введите название задачи.', getKeyboard({
+          buttonsRows: [],
+          includeBack: true,
+          includeHome: true
+        }));
+      }
+      return awaitingTaskDescription(bot, chatId, adminState, username, text);
+    }
+
+    case 'awaitingTaskPhoto': {
+      return awaitingTaskPhoto(bot, chatId, adminState, username, text);
+    }
+
+    case 'awaitingDeadlineDate': {
+      return awaitingDeadlineDate(bot, chatId, adminState, username, text);
+    }
+
+    case 'awaitingManualDateInput': {
+      return awaitingManualDateInput(bot, chatId, adminState, username, text);
+    }
+
+    case 'awaitingDeadlineTime': {
+      return awaitingDeadlineTime(msg, bot, chatId, adminState, username, text);
+    }
+
+    case 'awaitingManualTimeInput': {
+      return awaitingManualTimeInput(msg, bot, chatId, adminState, username, text);
+    }
+
+    default:
+      return;
+  }
 }
 
 // Функция для выполнения задачи с предложением прикрепить фото или пропустить
@@ -373,6 +585,7 @@ const taskText = `📝 *Задача:* ${escapeMarkdownV2(task.title)}\n📌*О�
     await bot.sendMessage(chatId, '❌ Произошла ошибка.');
   }
 }
+
 
 module.exports = {
   handleUserCommands,

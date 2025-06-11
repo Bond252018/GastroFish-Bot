@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { subadminMenu, adminMainMenu, User } = require('./utils');
+const { subadminMenu, adminMainMenu, userMenu, User } = require('./utils');
 const Task = require('../models/taskDB');
 const { adminIds } = require('../constants/constants');
 
@@ -211,10 +211,10 @@ if (adminState[username].target === 'user' || adminState[username].target === 'a
         // Подтверждение отправителю
         await bot.sendMessage(
           chatId,
-          `✅ Задача добавлена для ${targetDisplay} @${assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}`
+          `✅ Задача добавлена для ${targetDisplay} @${assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}\n`
         );
 
-        adminState[username].step = null; // ✅ Сброс шага
+        delete adminState[username]; // ✅ Сброс шага
 
 
      } else {
@@ -239,6 +239,7 @@ if (adminState[username].target === 'user' || adminState[username].target === 'a
           });   
           
           departmentUsers = departmentUsers.filter(user => user.username !== username);
+          
 
         // Массив для сохранения задач
         const tasksToSend = [];
@@ -288,52 +289,73 @@ if (adminState[username].target === 'user' || adminState[username].target === 'a
         }
       }
       
-    adminState[username].step = null; // ✅ Сброс шага
+        delete adminState[username]; // ✅ Сброс шага
 
-    const userId = msg.from.id;
-    
-    let role = adminState[userId]?.role;
-    
-    if (!role) {
-      if (adminIds.includes(userId)) {
-        role = 'admin';
-      } else {
-        role = 'subadmin';
-      }
+  const userId = msg.from.id;
+  const user = await User.findOne({ username });
+
+  let role = null;
+
+  // 1. По базе данных
+  if (user && user.role) {
+    role = user.role;
+  }
+
+  // 2. Если в базе нет — проверим по adminState
+  if (!role) {
+    if (adminState[username]?.role) {
+      role = adminState[username].role;
+    } else if (adminState[userId]?.role) {
+      role = adminState[userId].role;
     }
+  }
 
-  // Возвращаем в соответствующее главное меню в зависимости от роли
+  // 3. Если всё ещё нет — по списку adminIds
+  if (!role) {
+    if (adminIds.includes(userId)) {
+      role = 'admin';
+    } else if (user && user.subadminDepartments?.length) {
+      // Если есть департаменты — это субадмин
+      role = 'subadmin';
+    } else {
+      role = 'user';
+    }
+  }
+
+  // 4. Отправка меню по роли
   if (role === 'admin') {
     await bot.sendMessage(chatId, 'Возвращаемся в главное меню администратора.', adminMainMenu);
   } else if (role === 'subadmin') {
     await bot.sendMessage(chatId, 'Возвращаемся в главное меню субадминистратора.', subadminMenu);
+  } else {
+    await bot.sendMessage(chatId, 'Возвращаемся в главное меню пользователя.', userMenu);
   }
-}    
+}   
 
 async function awaitingManualTimeInput(msg, bot, chatId, adminState, username, text) {
     if (!/^\d{2}:\d{2}$/.test(text)) {
       return bot.sendMessage(chatId, 'Введите время в формате ЧЧ:ММ, например: 18:00');
     }
   
-const manualDate = adminState[username].deadlineDate; // дата в формате 'дд.мм.гггг'
-const manualTime = text; // время в формате 'чч:мм'
+  const manualDate = adminState[username].deadlineDate; // дата в формате 'дд.мм.гггг'
+  const manualTime = text; // время в формате 'чч:мм'
 
-// Преобразуем дату и время в числа
-const [d, m, y] = manualDate.split('.').map(Number);
-const [h, min] = manualTime.split(':').map(Number);
+  // Преобразуем дату и время в числа
+  const [d, m, y] = manualDate.split('.').map(Number);
+  const [h, min] = manualTime.split(':').map(Number);
 
-// Конвертируем в UTC
-const manualDeadline = convertUkraineLocalToUTC(y, m - 1, d, h, min);
+  // Конвертируем в UTC
+  const manualDeadline = convertUkraineLocalToUTC(y, m - 1, d, h, min);
 
-  // Проверяем, что дата и время не в прошлом
-    const currentTime = new Date();
-    if (manualDeadline < currentTime) {
-      return bot.sendMessage(chatId, '❌ Дедлайн не может быть в прошлом. Попробуйте выбрать другую дату и время.');
-    }
+    // Проверяем, что дата и время не в прошлом
+      const currentTime = new Date();
+      if (manualDeadline < currentTime) {
+        return bot.sendMessage(chatId, '❌ Дедлайн не может быть в прошлом. Попробуйте выбрать другую дату и время.');
+      }
 
-if (isNaN(manualDeadline.getTime())) {
-  return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
-}
+  if (isNaN(manualDeadline.getTime())) {
+    return bot.sendMessage(chatId, '❌ Некорректная дата или время. Попробуйте снова.');
+  }
   
     // Сохраняем дату и время
     adminState[username].deadline = manualDeadline;
@@ -391,10 +413,11 @@ if (isNaN(manualDeadline.getTime())) {
         // Подтверждение отправителю
         await bot.sendMessage(
           chatId,
-          `✅ Задача добавлена для ${targetDisplay} @${assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}`
+          `✅ Задача добавлена для ${targetDisplay} @${assignedTo}\n\n📌 Название: ${task.title}\n📝 Описание: ${task.description}\n📅 Дедлайн: ${task.deadline.toLocaleString('ru-RU')}\n🏢 Отдел: ${task.department}\n`
         );
 
-        adminState[username].step = null; // ✅ Сброс шага
+        delete adminState[username]; // ✅ Сброс шага
+ 
      } else {
       // Задача для всех в отделе
         // Для администратора или субадмина
@@ -461,25 +484,46 @@ if (isNaN(manualDeadline.getTime())) {
         }
       }
     
-    const userId = msg.from.id;
-    
-    let role = adminState[userId]?.role;
-    
-    if (!role) {
-      if (adminIds.includes(userId)) {
-        role = 'admin';
-      } else {
-        role = 'subadmin';
-      }
-    }
+  const userId = msg.from.id;
+  const user = await User.findOne({ username });
 
-  // Возвращаем в соответствующее главное меню в зависимости от роли
-  if (role === 'admin') {
-  await bot.sendMessage(chatId, 'Возвращаемся в главное меню администратора.', adminMainMenu);
-  } else if (role === 'subadmin') {
-  await bot.sendMessage(chatId, 'Возвращаемся в главное меню субадминистратора.', subadminMenu);
+  let role = null;
+
+  // 1. По базе данных
+  if (user && user.role) {
+    role = user.role;
   }
-}   
+
+  // 2. Если в базе нет — проверим по adminState
+  if (!role) {
+    if (adminState[username]?.role) {
+      role = adminState[username].role;
+    } else if (adminState[userId]?.role) {
+      role = adminState[userId].role;
+    }
+  }
+
+  // 3. Если всё ещё нет — по списку adminIds
+  if (!role) {
+    if (adminIds.includes(userId)) {
+      role = 'admin';
+    } else if (user && user.subadminDepartments?.length) {
+      // Если есть департаменты — это субадмин
+      role = 'subadmin';
+    } else {
+      role = 'user';
+    }
+  }
+
+  // 4. Отправка меню по роли
+  if (role === 'admin') {
+    await bot.sendMessage(chatId, 'Возвращаемся в главное меню администратора.', adminMainMenu);
+  } else if (role === 'subadmin') {
+    await bot.sendMessage(chatId, 'Возвращаемся в главное меню субадминистратора.', subadminMenu);
+  } else {
+    await bot.sendMessage(chatId, 'Возвращаемся в главное меню пользователя.', userMenu);
+  }
+}
 
 module.exports = {
   awaitingTaskDescription,

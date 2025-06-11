@@ -71,6 +71,31 @@ function formatDateTimeRu(date) {
   });
 }
 
+function getKeyboard(options = {}) {
+  // options:
+  //   buttonsRows: массив массивов с кнопками (строки кнопок)
+  //   includeBack: булево, добавить ли кнопку "🔙 Назад"
+  //   includeHome: булево, добавить ли кнопку "🏠 Главное меню"
+
+  const keyboard = [...options.buttonsRows];
+
+  const extraButtons = [];
+  if (options.includeBack) extraButtons.push('🔙 Назад');
+  if (options.includeHome) extraButtons.push('🏠 Главное меню');
+
+  if (extraButtons.length > 0) {
+    keyboard.push(extraButtons);
+  }
+
+  return {
+    reply_markup: {
+      keyboard,
+      resize_keyboard: true
+    }
+  };
+}
+
+
 const departmentList = [
   { name: "Склад", emoji: "📦" },
   { name: "Устричный бар", emoji: "🦪" },
@@ -127,6 +152,7 @@ const subadminMenu = {
 const userMenu = {
   reply_markup: {
     keyboard: [
+      ['📝 Поставить задачу'],
       ['📋 Мои задачи', '📋 Мои невыполненные задачи'],
       [' 📄 Мои документы'],
     ],
@@ -136,4 +162,4 @@ const userMenu = {
 
 
 // Экспортируем необходимые данные
-module.exports = { bot, isValidUsername, escapeHTML, escapeMarkdownV2, escapeMarkdownV2Username, formatDateTimeRu,  departmentList, adminState, adminMainMenu, subadminMenu, userMenu, Document, User, Task };
+module.exports = { bot, isValidUsername, escapeHTML, escapeMarkdownV2, escapeMarkdownV2Username, formatDateTimeRu, getKeyboard, departmentList, adminState, adminMainMenu, subadminMenu, userMenu, Document, User, Task };
